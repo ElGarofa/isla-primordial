@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Isla Primordial</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #05080a; overflow: hidden; font-family: system-ui, sans-serif; color: #e8efe6; }
+    #app { position: fixed; inset: 0; }
+    #app canvas { display: block; width: 100%; height: 100%; }
+    #ui-root { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    #loading {
+      position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+      background: radial-gradient(ellipse at 50% 40%, #10202a 0%, #05080a 70%);
+      transition: opacity .8s;
+    }
+    #loading h1 { margin: 0; letter-spacing: .35em; font-weight: 300; font-size: 2.2rem; }
+    #loading .bar { width: min(420px, 70vw); height: 3px; background: #1b2a2f; border-radius: 2px; overflow: hidden; }
+    #loading-fill { height: 100%; width: 0%; background: #9ad6a1; transition: width .25s; }
+    #loading-label { margin: 0; font-size: .85rem; opacity: .7; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="loading">
+    <h1>ISLA PRIMORDIAL</h1>
+    <div class="bar"><div id="loading-fill"></div></div>
+    <p id="loading-label">Cargando…</p>
+  </div>
+  <div id="ui-root"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
