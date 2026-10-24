@@ -161,3 +161,25 @@ player lo evalúa (el más cercano dentro de `reach` y en el cono de la mirada),
 **Fuego en el viewmodel.** `ctx.fx.createFire(position, { scene })`: con `scene` distinta de `ctx.scene` (p. ej. `ctx.viewmodel.scene`) el fuego se crea ahí (antorcha en mano).
 
 **Sin acoplar internos.** Nadie importa archivos internos de otro módulo. Si necesitás un dato de otro módulo y no está en el contrato: usá un evento o escribilo en "Pedidos al director".
+
+---
+
+## Ampliaciones posteriores al contrato original (Etapas 1–3)
+
+Los módulos siguen siendo los mismos; se amplió dentro de ellos. No hay un segundo inventario, gestor de recetas ni controlador de criaturas.
+
+| Archivo | Qué aporta |
+|---|---|
+| `core/items.js` | Catálogo único de objetos, recetas, recolección, despiece, oficios y equipo animal (familia F, ranuras `RANURAS_ANIMAL`). Datos puros que también importan las pruebas en Node. |
+| `survival/saber.js` | Conocimiento: recetas aprendidas, XP por oficio (incluye `manejo`), calidad al fabricar. |
+| `fauna/catalogo.js` | 162 fichas de especies en datos; las implementadas llevan además `doma` y `montura`. |
+| `fauna/species.js`, `creature.js` | Fichas con malla/esqueleto/IK; `creature.rel` es la relación con el jugador. |
+| `fauna/sentidos.js`, `cerebro.js`, `habilidades.js` | Percepción, estados de la IA y habilidades de especie conectadas a ella. |
+| `fauna/vinculo.js` | **Domesticación por niveles**: habituación, confianza, manejo, cuidado, órdenes, equipo, carga, guardado de `rel`. Se engancha a la IA en `cerebro.js` (`trato`, `sentirRel`, `tickRel`, correa de órdenes, `noCazaJugador`). |
+| `player/montura.js` | Montar, conducir y anclar al jugador a la silla (`ctx.montura`). Se ejecuta en la fase `lateUpdate`, después de que la fauna se movió. |
+| `ui/animal.js` | Panel del animal propio. `ui/index.js` añade la línea de objetivo con nivel/habituación y el aviso de montura. |
+
+API nuevas que otros módulos pueden usar: `ctx.fauna.vinculo.*` (ver `fauna/index.js`), `ctx.fauna.propios()`, `ctx.fauna.serializar()/restaurar()`, `ctx.montura.{puede,montar,desmontar,ancla}`, `ctx.survival.inventory.tomar()`.
+Eventos nuevos: `fauna:habituada`, `fauna:ofrenda`, `fauna:domesticada`, `fauna:vinculo_perdido`, `fauna:equipado`, `fauna:liberada`, `montura:montar`, `montura:desmontar`, `fauna:alerta`, `saber:aprendido`, `saber:nivel`, `crafted`, `proyectil:disparado`, `proyectil:impacto`.
+Fase `lateUpdate`: tras todos los `update`, para lo que depende de la posición final de otros módulos (el jinete).
+Guardado: formato v2 (equipo, durabilidad, saber, **fauna propia y habituada**); migra v1.

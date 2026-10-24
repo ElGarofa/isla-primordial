@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { mulberry32, hash2 } from '../core/rng.js';
 import { createNoise2D, fbm } from '../core/noise.js';
 import { CONFIG } from '../core/config.js';
+import { ITEMS, recolectar } from '../core/items.js';
 import { getHeight, getSlope } from '../world/heightfield.js';
 import { makeFoliage, makeFrond, makeGrass, makeNeedles, makeBark } from './textures.js';
 import { buildPalm, buildJungleTree, buildConifer, buildBush, buildFern, buildRock, buildGrassClump } from './geometry.js';
@@ -346,38 +347,38 @@ export async function create(ctx) {
       }
       return null;
     },
-    /** Aplica daño; devuelve { destruido, drops } o null. */
-    damage(id, cantidad, herramienta = null) {
+    /** Aplica daño; devuelve { destruido, drops } o null. `tags` = etiquetas de la herramienta en mano (core/items.js). */
+    damage(id, cantidad, herramienta = null, tags = null) {
       const e = registry.get(id);
       if (!e) return null;
+      tags = tags ?? ITEMS[herramienta]?.etiquetas ?? (herramienta === 'hacha_piedra' ? ['talar'] : herramienta === 'pico_piedra' ? ['picar'] : []);
       const pos = new THREE.Vector3(e.it.x, e.it.y, e.it.z);
-      const drops = [];
-      const rnd = Math.random;
+      const bioma = ctx.world.getBiome(e.it.x, e.it.z);
       ctx.events.emit('flora:hit', { tipo: e.tipo, position: pos, herramienta });
       ctx.fx?.emit?.(e.tipo === 'roca' ? 'impacto_roca' : 'astillas', pos.clone().setY(pos.y + 1.2), {});
       if (e.tipo === 'arbol') {
-        const axe = herramienta === 'hacha_piedra';
-        e.hp -= cantidad * (axe ? 1 : 0.3);
-        drops.push({ item: 'madera', cantidad: axe ? 2 : 1 });
-        if (rnd() < 0.3) drops.push({ item: 'fibra', cantidad: 1 });
+        e.hp -= cantidad * (tags.includes('talar') ? 1 : 0.3);
+        const drops = recolectar('arbol', 'golpe', tags, bioma);
         if (e.hp <= 0) {
-          drops.push({ item: 'madera', cantidad: 5 });
+          drops.push(...recolectar('arbol', 'caida', tags, bioma));
           const away = new THREE.Vector3(pos.x - ctx.camera.position.x, 0, pos.z - ctx.camera.position.z).normalize();
           fellTree(e, away);
           return { destruido: true, drops };
         }
-      } else if (e.tipo === 'roca') {
-        const pick = herramienta === 'pico_piedra';
-        e.hp -= cantidad * (pick ? 1 : 0.25);
-        if (pick) { drops.push({ item: 'piedra', cantidad: 2 }); if (rnd() < 0.15) drops.push({ item: 'pedernal', cantidad: 1 }); }
-        else if (rnd() < 0.3) drops.push({ item: 'piedra', cantidad: 1 });
-        if (e.hp <= 0) { drops.push({ item: 'piedra', cantidad: 4 }, { item: 'pedernal', cantidad: 1 }); removeInstance(e.it); return { destruido: true, drops }; }
-      } else if (e.tipo === 'baya') {
+        return { destruido: false, drops };
+      }
+      if (e.tipo === 'roca') {
+        e.hp -= cantidad * (tags.includes('picar') ? 1 : 0.25);
+        const drops = recolectar('roca', 'golpe', tags, bioma);
+        if (e.hp <= 0) { drops.push(...recolectar('roca', 'caida', tags, bioma)); removeInstance(e.it); return { destruido: true, drops }; }
+        return { destruido: false, drops };
+      }
+      if (e.tipo === 'baya') {
         if (ctx.time.elapsed < e.cooldown) return { destruido: false, drops: [] };
         e.cooldown = ctx.time.elapsed + 240;
-        drops.push({ item: 'baya', cantidad: 3 + ((rnd() * 3) | 0) }, { item: 'fibra', cantidad: 1 });
+        return { destruido: false, drops: recolectar('baya', 'golpe', tags, bioma) };
       }
-      return { destruido: false, drops };
+      return { destruido: false, drops: [] };
     },
     getHarvestablesNear(pos, radius, out = []) {
       out.length = 0;

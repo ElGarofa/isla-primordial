@@ -4,6 +4,9 @@
 import * as THREE from 'three';
 import { createProps } from './props.js';
 import { createViewmodel } from './viewmodel.js';
+import { createProyectiles } from './proyectiles.js';
+import { createMontura } from './montura.js';
+import { ITEMS } from '../core/items.js';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -31,6 +34,8 @@ export async function create(ctx) {
     sprinting: false,
     crouching: false,
     eyePosition: new THREE.Vector3(),
+    get target() { return target; }, // objetivo apuntado (pruebas y depuración)
+    ruidoExtra: 0, // ruido puntual (0..1.4) que oyen las criaturas; decae solo
     registerInteractable(def) {
       const id = nextInteractableId++;
       interactables.set(id, def);
@@ -49,9 +54,11 @@ export async function create(ctx) {
 
   ctx.physics = createProps(ctx);
   const viewmodel = (ctx.viewmodel = createViewmodel(ctx));
+  const proyectiles = (ctx.proyectiles = createProyectiles(ctx));
+  const montura = (ctx.montura = createMontura(ctx, player));
 
   // ------------------------------------------------------------------ input
-  const BINDS = { KeyE: 'interactuar', Tab: 'inventario', Escape: 'pausa', KeyM: 'mapa' };
+  const BINDS = { KeyE: 'interactuar', Tab: 'inventario', Escape: 'pausa', KeyM: 'mapa', KeyG: 'montar' };
   const emitAction = (action, pressed, index) => ctx.events.emit('input:action', { action, pressed, index });
   const canvas = ctx.container;
 
@@ -118,6 +125,7 @@ export async function create(ctx) {
   let lastTargetKey = '';
 
   ctx.events.on('player:damage', ({ cantidad }) => { shake = Math.min(1, shake + (cantidad ?? 5) / 30); });
+  ctx.events.on('camera:shake', ({ intensidad = 0.5 } = {}) => { shake = Math.min(1, shake + intensidad); });
 
   // ------------------------------------------------------------------ colisiones
   function resolveColliders(pos, radius) {
@@ -144,6 +152,7 @@ export async function create(ctx) {
   // ------------------------------------------------------------------ física del jugador (60 Hz)
   function fixedUpdate(dt) {
     if (ctx.state !== 'playing' || ctx.debug.freeCamera || ctx.ui?.blocksInput) return;
+    if (player.montura) return; // montado: la posición la fija la montura (montura.js)
     const p = player.position, v = player.velocity;
     const sea = world.seaLevel;
     const ground = world.getHeight(p.x, p.z);
@@ -244,7 +253,8 @@ export async function create(ctx) {
   function scanTarget() {
     player.getLookRay(rayO, rayD);
     let best = null;
-    const reach = cfg.reach;
+    const ws = ctx.survival?.weaponStats?.();
+    const reach = ws && !ws.distancia ? Math.max(cfg.reach, ws.alcance || 0) : cfg.reach;
     const fl = ctx.flora?.pick?.(rayO, rayD, reach);
     if (fl) best = { kind: 'flora', hit: fl, dist: fl.distance, nombre: fl.nombre ?? labelFlora(fl.tipo), tipo: fl.tipo, vida: fl.vida };
     const fa = ctx.fauna?.pick?.(rayO, rayD, reach + 0.6);
@@ -283,45 +293,122 @@ export async function create(ctx) {
 
   function publishTarget() {
     target = scanTarget();
-    const key = target ? `${target.kind}|${target.nombre}|${Math.round((target.vida ?? 0))}` : '';
+    // criaturas con trato posible: nivel de relación y acción de la tecla E
+    let rel = null;
+    if (target?.kind === 'fauna' && target.hit.criatura?.rel) {
+      const c = target.hit.criatura, V = ctx.fauna.vinculo, i = V.info(c);
+      rel = { nivel: i.nivel, nivelNombre: i.nivelNombre, max: i.max, hab: i.hab, conf: i.conf, propio: i.propio, nombre: i.nombre, accionE: V.accionE(c), hambre: i.hambre, montable: i.montable };
+    }
+    const key = target ? `${target.kind}|${target.nombre}|${Math.round((target.vida ?? 0))}${rel ? `|${rel.nivel}|${Math.round(rel.hab * 20)}|${Math.round(rel.conf * 20)}|${rel.accionE}|${rel.nombre}` : ''}` : '';
     if (key === lastTargetKey) return;
     lastTargetKey = key;
-    ctx.events.emit('player:target', target ? { nombre: target.nombre, tipo: target.tipo, accion: actionFor(target), vida: target.vida } : null);
+    ctx.events.emit('player:target', target ? { nombre: rel?.propio ? rel.nombre : target.nombre, tipo: target.tipo, accion: actionFor(target), vida: target.vida, rel } : null);
   }
 
   function doInteract() {
     if (!target) return;
     if (target.kind === 'agua') { ctx.survival?.drink?.(18); ctx.audio?.play?.('beber'); return; }
     if (target.kind === 'interactuable') { target.hit.onInteract?.(); return; }
+    if (target.kind === 'fauna') { if (target.hit.criatura?.rel) ctx.fauna.vinculo.interactuar(target.hit.criatura); return; }
     if (target.kind === 'flora' && (target.tipo === 'baya' || target.tipo === 'planta')) strike(true);
   }
 
+  const FISTS = { item: null, dano: 4, cd: 0.7, alcance: 0, penetra: 0, aturde: 0, tags: [], cal: 1, distancia: false };
+  const ruido = (v) => { player.ruidoExtra = Math.max(player.ruidoExtra, v); };
+  let pendiente = null; // disparo cargándose: { t, item }
+  let sinMunAviso = 0;
+
   function strike(gather = false) {
-    if (swingCd > 0) return;
-    const tool = currentWeapon();
-    swingCd = tool ? 0.55 : 0.7;
-    ctx.events.emit('player:attack', { tool, position: player.position });
+    if (swingCd > 0 || pendiente) return;
+    const sv = ctx.survival;
+    const ws = sv?.weaponStats?.() ?? FISTS;
+    if (ws.distancia && !gather) { iniciarDisparo(ws); return; }
+    swingCd = ws.cd;
+    ctx.events.emit('player:attack', { tool: ws.item, position: player.position, cd: ws.cd });
     fovBoost -= 0.4;
     const t = scanTarget();
-    if (!t) return;
-    const dmgBase = tool === 'hacha_piedra' ? 14 : tool === 'pico_piedra' ? 10 : tool === 'lanza' ? 28 : tool === 'antorcha' ? 6 : 4;
+    if (!t) { ruido(0.2); return; }
     if (t.kind === 'flora') {
-      const r = ctx.flora.damage(t.hit.id, dmgBase, tool);
+      const esBaya = t.tipo === 'baya' || t.tipo === 'planta';
+      const r = ctx.flora.damage(t.hit.id, ws.dano, ws.item, ws.tags);
       if (r?.drops) for (const d of r.drops) {
-        const left = ctx.survival?.inventory?.add?.(d.item, d.cantidad) ?? d.cantidad;
+        const left = sv?.inventory?.add?.(d.item, d.cantidad) ?? d.cantidad;
         if (left > 0) ctx.physics.spawnProp('loot', t.hit.position.clone().setY(t.hit.position.y + 1), new THREE.Vector3((Math.random() - 0.5) * 3, 3, (Math.random() - 0.5) * 3), d);
       }
+      if (!esBaya) {
+        ruido(t.tipo === 'roca' ? 0.9 : 0.7);
+        const ok = (t.tipo === 'arbol' && ws.tags.includes('talar')) || (t.tipo === 'roca' && ws.tags.includes('picar'));
+        sv?.desgastarMano?.(ok ? 1 : 2);
+        if (r?.drops?.length) sv?.saber?.ganar?.('talla', 0.25);
+      } else ruido(0.15);
       landKick += 0.12;
     } else if (t.kind === 'fauna') {
-      ctx.fauna.damage(t.hit.criatura, dmgBase * (tool === 'lanza' ? 1.4 : 1), 'jugador');
+      ctx.fauna.damage(t.hit.criatura, ws.dano, 'jugador', { penetra: ws.penetra, aturde: ws.aturde });
+      ruido(0.5);
+      sv?.desgastarMano?.(1);
+      const g = sv?.saber?.ganar?.('caza', 0.6);
+      if (g?.subio) ctx.events.emit('saber:nivel', { hab: 'caza', nivel: g.nivel });
       landKick += 0.18;
     }
+  }
+
+  const _fd = new THREE.Vector3(), _fo = new THREE.Vector3(), _fr = new THREE.Vector3();
+  function iniciarDisparo(ws) {
+    const sv = ctx.survival, it = ITEMS[ws.item];
+    if (it.municion) {
+      if (sv.municion(it.municion) < 0) {
+        if (ctx.time.elapsed > sinMunAviso) { sinMunAviso = ctx.time.elapsed + 1.5; ctx.ui?.notify?.(`Sin munición: ${it.municion === 'flecha' ? 'flechas' : 'guijarros'}`, 'warn'); ctx.events.emit('ui:sound', { nombre: 'ui_error' }); }
+        swingCd = 0.3; return;
+      }
+    }
+    swingCd = ws.cd;
+    pendiente = { t: it.carga ?? 0, item: ws.item };
+    ctx.events.emit('player:attack', { tool: ws.item, position: player.position, cd: ws.cd });
+    fovBoost -= 0.25;
+    if ((it.carga ?? 0) <= 0) soltarDisparo();
+  }
+  function soltarDisparo() {
+    const sv = ctx.survival, pend = pendiente; pendiente = null;
+    if (!pend) return;
+    const ws = sv.weaponStats();
+    if (ws.item !== pend.item) return; // cambió de objeto mientras cargaba
+    const it = ITEMS[ws.item];
+    player.getLookRay(_fo, _fd);
+    // dispersión: peor al correr o al estar cansado
+    const rapidez = Math.hypot(player.velocity.x, player.velocity.z);
+    const disp = (it.arrojadiza ? 0.012 : it.municion === 'guijarro' ? 0.02 : 0.008) + Math.min(0.03, rapidez * 0.004) + (sv.stats.energia < 20 ? 0.01 : 0);
+    _fd.x += (Math.random() - 0.5) * disp; _fd.y += (Math.random() - 0.5) * disp; _fd.z += (Math.random() - 0.5) * disp; _fd.normalize();
+    _fr.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+    const origen = _fo.clone().addScaledVector(_fd, 0.6).addScaledVector(_fr, 0.12).add(new THREE.Vector3(0, -0.12, 0));
+    if (it.arrojadiza) {
+      const s = sv.tomarMano(); if (!s) return;
+      proyectiles.disparar({ origin: origen, dir: _fd, vel: it.vel, dano: ws.dano, item: ws.item, clase: 'jabalina', rotura: 0, penetra: ws.penetra, arma: ws.item, dur: s.dur, cal: s.cal, rep: s.rep });
+      ruido(0.4);
+    } else {
+      const idx = sv.municion(it.municion); if (idx < 0) return;
+      const mun = sv.slots[idx].item, mi = ITEMS[mun];
+      sv.inventory.remove(mun, 1);
+      proyectiles.disparar({ origin: origen, dir: _fd, vel: it.vel, dano: ws.dano + mi.dano, item: mun, clase: mi.clase, rotura: mi.rotura ?? 0.3, penetra: ws.penetra + (mi.penetra ?? 0), arma: ws.item });
+      sv.desgastarMano(1);
+      ruido(it.municion === 'guijarro' ? 0.25 : 0.35);
+      ctx.audio?.play?.(it.municion === 'guijarro' ? 'honda_disparo' : 'arco_disparo', player.position);
+    }
+    landKick += 0.1;
   }
 
   ctx.events.on('input:action', ({ action, pressed }) => {
     if (ctx.state !== 'playing' || ctx.ui?.blocksInput) return;
     if (!pressed) return;
     if (action === 'interactuar') doInteract();
+    if (action === 'montar') {
+      if (montura.activa) montura.desmontar();
+      else {
+        // el animal apuntado, o el montable más cercano
+        let c = target?.kind === 'fauna' ? target.hit.criatura : null;
+        if (!c?.rel?.dom) { let bd = 1e9; c = null; for (const o of ctx.fauna?.propios?.() ?? []) { const d = o.distToPlayer(); if (d < bd && o.sp.montura?.jinete) { bd = d; c = o; } } }
+        if (c) montura.montar(c); else ctx.ui?.notify?.('No hay ningún animal montable cerca', 'info');
+      }
+    }
     if (action === 'usar' && input.pointerLocked) strike();
     if (action === 'usar' && ctx.debug.enabled) strike();
   });
@@ -386,6 +473,7 @@ export async function create(ctx) {
   return {
     name: 'player',
     fixedUpdate,
+    lateUpdate(dt) { montura.lateUpdate(dt); },
     update(dt) {
       tick(dt);
       viewmodel.update(dt);
@@ -395,6 +483,11 @@ export async function create(ctx) {
   function tick(dt) {
     {
       ctx.physics.update?.(dt);
+      if (ctx.state !== 'paused') {
+        proyectiles.update(dt);
+        player.ruidoExtra = Math.max(0, player.ruidoExtra - dt * 1.6);
+        if (pendiente) { if (ctx.state !== 'playing') pendiente = null; else { pendiente.t -= dt; if (pendiente.t <= 0) soltarDisparo(); } }
+      }
       if (ctx.debug.freeCamera) return;
       if (ctx.state === 'menu' || ctx.state === 'loading') { menuCamera(dt); return; }
       if (ctx.state === 'dead') { deathCamera(dt); return; }

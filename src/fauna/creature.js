@@ -1,12 +1,23 @@
 // Una criatura: nodo de escena con malla esquelética, marcha con IK de patas apoyadas en el terreno, animación procedural y comportamiento.
 import * as THREE from 'three';
+import { ITEMS } from '../core/items.js';
 import { makeSkeleton } from './builder.js';
+import { pensar, iniciarCerebro } from './cerebro.js';
+import { crearHabilidades } from './habilidades.js';
+import { crearRel, golpeado, murio, correa } from './vinculo.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const shortest = (a) => { a %= TAU; if (a > Math.PI) a -= TAU; if (a < -Math.PI) a += TAU; return a; };
 const rnd = (a, b) => a + Math.random() * (b - a);
+const ss = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+/** Ángulo del barrido de cola: preparación hacia atrás, golpe rápido y recuperación. */
+function swingAngle(k, side) {
+  if (k < 0.3) return -side * 0.9 * ss(k / 0.3);
+  if (k < 0.6) return side * (-0.9 + 2.0 * ss((k - 0.3) / 0.3));
+  return side * 1.1 * (1 - ss((k - 0.6) / 0.4));
+}
 const _q = new THREE.Quaternion(), _qi = new THREE.Quaternion(), _v = new THREE.Vector3(), _o = [];
 const AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
 
@@ -55,6 +66,9 @@ export class Creature {
     this.neck = ['neck1', 'neck2', 'neck3', 'neck4'].filter((n) => this.bones[n]);
     this.legs = data.legs.map((l) => ({ ...l, ik: { dz: 0, lift: 0 }, ang1: 0, ang2: 0 }));
     this.flight = sp.ai.vuelo ? { cx: x, cz: z, r: rnd(55, 110), ang: Math.random() * TAU, alt: rnd(45, 85), flap: 0, flapT: rnd(0, 3), dir: Math.random() < 0.5 ? 1 : -1 } : null;
+    this.hab = crearHabilidades(sp); this.lookPoint = null; this.idleLen = 3; this.struck = false; this.crouchK = 0; this.jawAnim = 0;
+    iniciarCerebro(this);
+    this.rel = crearRel(this); this.jinete = false; // relación con el jugador (null si la especie no admite trato)
     this.apply();
   }
 
@@ -62,26 +76,48 @@ export class Creature {
   get center() { return _v.set(this.position.x, this.position.y + (this.sp.hit[0]?.[1] ?? 1), this.position.z); }
 
   // ------------------------------------------------------------------------------------------ daño
-  damage(n, fuente) {
+  /** Daño recibido. `fuente`: 'jugador' | 'criatura' | texto; `atk`: criatura atacante (si la hay). La armadura natural depende del ángulo del golpe. */
+  damage(n, fuente = 'jugador', atk = null, opts = null) {
     if (this.muerta) return;
+    const sp = this.sp, ai = sp.ai, ctx = this.ctx, now = ctx.time.elapsed, jugador = fuente === 'jugador';
+    if (this.rel) { golpeado(this, fuente); const pr = this.rel.equipo.proteccion; if (pr && !(pr.dur <= 0)) { n *= 1 - (ITEMS[pr.item]?.aparejo?.armadura ?? 0); if (pr.dur != null) pr.dur = Math.max(0, pr.dur - 1); } }
+    let ax = null, az = null;
+    if (jugador && ctx.player) { ax = ctx.player.position.x; az = ctx.player.position.z; } else if (atk) { ax = atk.position.x; az = atk.position.z; }
+    if (this.armaduraF != null && ax != null) {
+      const trasera = Math.abs(shortest(Math.atan2(ax - this.position.x, az - this.position.z) - (this.yaw + Math.PI))) < 0.9;
+      n *= 1 - Math.max(0, (trasera ? this.armaduraT : this.armaduraF) - (opts?.penetra ?? 0)); // la penetración del arma reduce la coraza
+    }
     this.hp -= n; this.hit = 0.25;
-    const sp = this.sp;
+    if (opts?.aturde && Math.random() < opts.aturde) this.stun = Math.max(this.stun ?? 0, 0.9);
     this.mgr.onHit(this, n, fuente);
     if (this.hp <= 0) { this.die(); return; }
-    // reacción
-    if (sp.ai.huye > 0 || sp.ai.huye === 1) { if (sp.ai.huye === 1 || this.hp / this.hpMax < sp.ai.huye) { this.setState('flee'); this.fleeT = rnd(4, 7); } }
-    if (sp.ai.agresivo) { this.setState('chase'); this.stateT = 0; this.roar(); }
-    if (sp.ai.defiende) { this.enrage = 22; this.setState('charge'); this.roar(); }
-    if (sp.ai.pasivo && Math.random() < 0.5) this.roar();
-    if (sp.ai.vuelo) this.flight.alt += 12;
+    this.provocado = 14;
+    if (ax != null) this.amenaza = { x: ax, z: az, conf: 1, ref: atk, jugador, grande: !!atk && (atk.sp.ai.caza?.length ?? 0) > 0 && atk.sp.peligro >= 0.5, d: Math.hypot(ax - this.position.x, az - this.position.z), t: now };
+    if (ai.vuelo) { this.flight.alt += 12; return; }
+    if (ai.pasivo) { if (Math.random() < 0.5) this.roar(); return; }
+    if (ai.defiende) {
+      this.enrage = 22; this.tgt = atk ? { c: atk } : null; this.tgtJugador = jugador;
+      this.setState(this.hab.some((h) => h.id === 'cola_defensiva') ? 'defend' : 'charge'); this.roar(true); return;
+    }
+    const huye = ai.huye ?? 0, frac = this.hp / this.hpMax;
+    if (ai.agresivo || ai.caza?.length) {
+      if (huye > 0 && huye < 1 && frac < huye) { this.fleeT = rnd(4, 7); this.setState('flee'); return; }
+      if (jugador) { this.tgtJugador = true; this.tgt = null; } else if (atk) {
+        this.tgtJugador = false; this.tgt = { c: atk };
+        if (atk.sp.peligro > sp.peligro * 1.3) { this.fleeT = rnd(5, 8); this.setState('flee'); return; }
+      }
+      this.setState('chase'); this.roar(true); return;
+    }
+    if (huye === 1 || (huye > 0 && frac < huye)) { this.fleeT = rnd(4, 7); this.setState('flee'); }
   }
   die() {
-    this.muerta = true; this.state = 'dead'; this.deathT = 0; this.hp = 0;
+    this.muerta = true; this.state = 'dead'; this.deathT = 0; this.hp = 0; this.devorado = 0; this.dueno = null;
+    if (this.rel) murio(this);
     this.mgr.onKilled(this);
   }
-  roar() {
+  roar(fuerte = false) {
     const t = this.ctx.time.elapsed;
-    if (t - this.lastRoar < 3.5) return;
+    if (t - this.lastRoar < (fuerte ? 1.6 : 3.5)) return;
     this.lastRoar = t;
     this.jawAnim = 1.2;
     this.ctx.events.emit('creature:roar', { especie: this.especie, position: this.center.clone() });
@@ -100,6 +136,14 @@ export class Creature {
     return Math.hypot(x, z) < w.size * 0.43;
   }
   pickGoal(r = 28) {
+    const L = this.rel?.manejo ? correa(this) : null; // un animal bajo manejo no se aleja de lo que se le ordenó
+    if (L) {
+      for (let i = 0; i < 12; i++) {
+        const a = Math.random() * TAU, d = rnd(L.R * 0.15, L.R * 0.85), x = L.x + Math.cos(a) * d, z = L.z + Math.sin(a) * d;
+        if (this.walkable(x, z)) { this.goal.set(x, 0, z); return true; }
+      }
+      this.goal.set(this.position.x, 0, this.position.z); return false;
+    }
     for (let i = 0; i < 12; i++) {
       const a = Math.random() * TAU, d = rnd(r * 0.4, r);
       let cx = this.position.x, cz = this.position.z;
@@ -119,94 +163,43 @@ export class Creature {
     this.wish = Math.abs(dy) < 1.2 ? speed : speed * 0.25;
   }
 
-  think(dt) {
-    const sp = this.sp, ai = sp.ai, ctx = this.ctx, playing = ctx.state === 'playing' && !ctx.survival?.dead;
-    const d = playing ? this.distToPlayer() : 1e9;
-    this.stateT += dt; this.enrage = Math.max(0, this.enrage - dt);
-    this.wish = 0; this.yawRate = 0;
-    const pl = ctx.player?.position;
-    const sight = ai.vista * (ctx.player?.crouching ? 0.55 : 1) * (ctx.time.nightFactor > 0.6 ? 0.8 : 1);
-    const grace = this.mgr.grace > 0 && Math.hypot(this.position.x - ctx.world.spawn.x, this.position.z - ctx.world.spawn.z) < 90;
+  think(dt) { pensar(this, dt); }
 
-    switch (this.state) {
-      case 'idle': {
-        if (ai.pasivo && d < 10) { /* ignora al jugador */ }
-        if (ai.agresivo && playing && d < sight && !grace) { this.setState('alert'); break; }
-        if (ai.huye === 1 && d < ai.huyeDist) { this.setState('flee'); this.fleeT = rnd(3, 6); break; }
-        if (ai.defiende && playing && d < 9 && ctx.player?.crouching === false && Math.random() < dt * 0.15) { this.setState('alert'); break; }
-        this.lookYaw = Math.sin(this.t * 0.4 + this.id) * 0.5; this.lookPitch = 0;
-        if (this.stateT > this.idleLen) { if (!ai.vuelo && Math.random() < (sp.tipo === 'herbivoro' ? 0.55 : 0.2)) this.setState('graze'); else { this.pickGoal(sp.scale < 0.5 ? 14 : 30); this.setState('wander'); } this.idleLen = rnd(2.5, 7); }
-        break;
-      }
-      case 'graze': {
-        if (ai.agresivo && playing && d < sight && !grace) { this.setState('alert'); break; }
-        if (ai.huye === 1 && d < ai.huyeDist) { this.setState('flee'); this.fleeT = rnd(3, 6); break; }
-        if (this.stateT > rnd(5, 9)) { this.pickGoal(30); this.setState('wander'); }
-        break;
-      }
-      case 'wander': {
-        const dist = Math.hypot(this.goal.x - this.position.x, this.goal.z - this.position.z);
-        if (ai.agresivo && playing && d < sight && !grace) { this.setState('alert'); break; }
-        if (ai.huye === 1 && d < ai.huyeDist) { this.setState('flee'); this.fleeT = rnd(3, 6); break; }
-        if (dist < 1.5 + sp.radius || this.stateT > 30) { this.setState('idle'); this.idleLen = rnd(2.5, 7); break; }
-        this.steer(this.goal.x, this.goal.z, dt, sp.vel.walk, sp.scale > 0.9 ? 1.1 : 2.2);
-        break;
-      }
-      case 'alert': {
-        if (!playing) { this.setState('idle'); break; }
-        const dx = pl.x - this.position.x, dz = pl.z - this.position.z;
-        this.steer(this.position.x + dx * 0.01, this.position.z + dz * 0.01, dt, 0, 3.5);
-        this.lookYaw = clamp(shortest(Math.atan2(dx, dz) - this.yaw), -0.9, 0.9); this.lookPitch = -0.1;
-        if (ai.agresivo && this.stateT > 0.7) { this.roar(); this.setState('chase'); }
-        if (ai.defiende && this.stateT > 2.5 && d > 14) this.setState('idle');
-        if (d > sight * 1.3) this.setState('idle');
-        break;
-      }
-      case 'flee': {
-        this.fleeT -= dt;
-        if (pl) {
-          const ax = this.position.x - pl.x, az = this.position.z - pl.z, l = Math.hypot(ax, az) || 1;
-          let tx = this.position.x + ax / l * 20, tz = this.position.z + az / l * 20;
-          if (!this.walkable(tx, tz)) { tx = this.position.x - az / l * 20; tz = this.position.z + ax / l * 20; }
-          this.steer(tx, tz, dt, sp.vel.run, 3.4);
-        }
-        if (this.fleeT <= 0 && (d > 24 || !playing)) this.setState('idle');
-        break;
-      }
-      case 'chase': case 'charge': {
-        if (!playing) { this.setState('idle'); break; }
-        const dx = pl.x - this.position.x, dz = pl.z - this.position.z, dist = Math.hypot(dx, dz);
-        if (this.state === 'chase' && (dist > sight * 1.6 || (this.stateT > 25 && dist > 12))) { this.setState('idle'); break; }
-        if (this.state === 'charge' && this.enrage <= 0) { this.setState('idle'); break; }
-        // la manada rodea: se acercan por ángulos distintos
-        let tx = pl.x, tz = pl.z;
-        if (ai.manada && dist > 6) { const a = Math.atan2(dz, dx) + Math.PI + this.flank * Math.min(1, dist / 18) * 0.5; tx = pl.x + Math.cos(a) * 2.2; tz = pl.z + Math.sin(a) * 2.2; }
-        this.steer(tx, tz, dt, sp.vel.run * (this.state === 'charge' ? 0.9 : 1), 4.2);
-        this.lookYaw = 0; this.atkCd -= dt;
-        if (dist < ai.ataque && this.atkCd <= 0 && Math.abs(shortest(Math.atan2(dx, dz) - this.yaw)) < 0.7) { this.atkCd = ai.cd; this.biteT = 0; this.struck = false; }
-        if (this.hp / this.hpMax < (ai.huye ?? 0) && ai.agresivo) { this.setState('flee'); this.fleeT = rnd(5, 8); }
-        break;
-      }
-      default: break;
+  // ------------------------------------------------------------------------------------------ utilidades de IA
+  grace() { return this.mgr.grace > 0 && Math.hypot(this.position.x - this.ctx.world.spawn.x, this.position.z - this.ctx.world.spawn.z) < 90; }
+  /** Objetivo actual: jugador (solo si lo percibe; si no, última posición vista), criatura perseguida o amenaza reciente. */
+  objetivoPos() {
+    const now = this.ctx.time.elapsed, p = this.ctx.player?.position, o = this._ot ?? (this._ot = { x: 0, z: 0, dx: 0, dz: 0, d: 0, jugador: false, ref: null });
+    let x, z, jugador = false, ref = null;
+    if (this.tgtJugador && p && this.ctx.state === 'playing') {
+      jugador = true;
+      if (this.pConf >= 0.1 || this.pDist < 7 || !this.lastSeen) { x = p.x; z = p.z; } else { x = this.lastSeen.x; z = this.lastSeen.z; }
+    } else if (this.tgt?.c && !this.tgt.c.muerta) { ref = this.tgt.c; x = ref.position.x; z = ref.position.z; } else if (this.amenaza && now - this.amenaza.t < 6) { x = this.amenaza.x; z = this.amenaza.z; jugador = !!this.amenaza.jugador; ref = this.amenaza.ref; } else return null;
+    o.x = x; o.z = z; o.dx = x - this.position.x; o.dz = z - this.position.z; o.d = Math.hypot(o.dx, o.dz); o.jugador = jugador; o.ref = ref;
+    return o;
+  }
+  /** Intruso más cercano (jugador percibido u otra criatura) dentro de `radio`. */
+  intruso(radio) {
+    const p = this.ctx.player?.position;
+    if (p && this.ctx.state === 'playing' && this.pConf > 0.2 && this.pDist < radio) return { jugador: true, x: p.x, z: p.z, d: this.pDist, ref: null };
+    let best = null;
+    for (const o of this.mgr.list) {
+      if (o === this || o.muerta || o.flight || o.especie === this.especie || o === this.carcass) continue;
+      const d = Math.hypot(o.position.x - this.position.x, o.position.z - this.position.z);
+      if (d < radio && (!best || d < best.d)) best = { jugador: false, x: o.position.x, z: o.position.z, d, ref: o };
     }
-    if (this.override) { if (this.override.speed != null) this.wish = this.override.speed; }
-    // golpe (mordisco / embestida)
-    if (this.biteT >= 0) {
-      this.biteT += dt / (ai.agresivo ? 0.55 : 0.8);
-      this.jaw = Math.sin(clamp(this.biteT, 0, 1) * Math.PI) * 0.7;
-      if (!this.struck && this.biteT > 0.4 && playing) {
-        this.struck = true;
-        const dx = pl.x - this.position.x, dz = pl.z - this.position.z;
-        if (Math.hypot(dx, dz) < ai.ataque * 1.45) {
-          this.mgr.hitPlayer(this, ai.dano * rnd(0.8, 1.2));
-          const l = Math.hypot(dx, dz) || 1;
-          if (ai.defiende) { ctx.player.velocity.x += dx / l * 9; ctx.player.velocity.z += dz / l * 9; ctx.player.velocity.y = Math.max(ctx.player.velocity.y, 4.5); }
-        }
-      }
-      if (this.biteT >= 1) this.biteT = -1;
-    }
+    return best;
+  }
+  /** Llegada de una llamada de alerta (retrasada por distancia y latencia de reacción). */
+  recibirAlerta(info, audible, delay) { if (this.alertaPend.length < 6) this.alertaPend.push({ info, aud: audible, t: delay }); }
+  /** Una exhibición ajena de un depredador mayor asusta a esta criatura. */
+  intimidar(de) {
+    if (this.muerta || this.state === 'charge' || this.sp.ai.defiende) return;
+    this.amenaza = { x: de.position.x, z: de.position.z, conf: 0.9, ref: de, jugador: false, grande: true, d: Math.hypot(de.position.x - this.position.x, de.position.z - this.position.z), t: this.ctx.time.elapsed };
+    this.fleeT = rnd(3, 5); this.setState('flee');
   }
 
+  // ------------------------------------------------------------------------------------------ vuelo
   thinkFlight(dt) {
     const f = this.flight, ctx = this.ctx, w = ctx.world;
     f.ang += (this.sp.vel.walk / f.r) * dt * f.dir;
@@ -263,7 +256,7 @@ export class Creature {
     this.pitch = lerp(this.pitch, tp, Math.min(1, dt * 5)); this.roll = lerp(this.roll, tr, Math.min(1, dt * 5));
     const bobAmp = sp.scale > 0.9 ? 0.03 * sp.hips : 0.04;
     this.bobY = moving ? Math.cos(this.phase * TAU * 2) * bobAmp * (0.5 + k) : lerp(this.bobY, 0, dt * 4);
-    hips.position.set(rest.hips.x, rest.hips.y + this.bobY, rest.hips.z);
+    hips.position.set(rest.hips.x, rest.hips.y + this.bobY - this.crouchK * sp.hips * 0.09, rest.hips.z);
     hips.rotation.set(this.pitch, 0, this.roll + (moving ? Math.sin(this.phase * TAU) * 0.025 * (sp.tipo === 'depredador' ? 1.6 : 1) : 0));
     // altura del grupo = media del terreno bajo los pies
     let gSum = 0;
@@ -309,46 +302,68 @@ export class Creature {
 
   // ------------------------------------------------------------------------------------------ cola, cuello, cabeza, mandíbula
   applySecondary(dt) {
-    const sp = this.sp, B = this.bones, t = this.t;
+    const sp = this.sp, B = this.bones, t = this.t, st = this.state, kind = sp.anim ?? 'teropodo';
     const k = this.k ?? 0, mv = clamp(this.speed / Math.max(0.5, sp.vel.run), 0, 1);
-    // cola: ondulación con retardo + contra-giro
-    const turn = clamp(this.yawRate ?? 0, -2, 2);
-    for (let i = 0; i < this.tail.length; i++) {
-      const b = this.tail[i], f = (i + 1) / this.tail.length;
-      const sway = Math.sin(this.phase * TAU - i * 0.7) * (0.05 + 0.12 * mv) * (sp.scale > 0.9 ? 0.5 : 1) + Math.sin(t * 0.8 - i * 0.5) * 0.03;
-      b.rotation.y = sway - turn * 0.06 * f;
+    const kk = Math.min(1, dt * 4);
+    this.dispK = lerp(this.dispK ?? 0, this.display > 0 ? 1 : 0, kk);
+    this.callK = lerp(this.callK ?? 0, this.llamadaAnim > 0 || this.scanT > 0.15 ? 1 : 0, Math.min(1, dt * 5));
+    this.crouchK = lerp(this.crouchK, st === 'stalk' || st === 'search' ? 1 : 0, Math.min(1, dt * 3));
+    const swing = this.tailSwing >= 0 ? swingAngle(this.tailSwing, this.tailSide) : 0;
+    // cola: ondulación con retardo + contra-giro (+ golpe de cola)
+    const turn = clamp(this.yawRate ?? 0, -2, 2), nT = this.tail.length;
+    const quiet = kind === 'anquilosaurio' || kind === 'estegosaurio' ? 0.45 : sp.scale > 0.9 ? 0.5 : 1;
+    for (let i = 0; i < nT; i++) {
+      const b = this.tail[i], f = (i + 1) / nT;
+      const sway = Math.sin(this.phase * TAU - i * 0.7) * (0.05 + 0.12 * mv) * quiet + Math.sin(t * 0.8 - i * 0.5) * 0.03;
+      b.rotation.y = sway - turn * 0.06 * f + swing * (1.25 / nT);
       b.rotation.x = Math.sin(this.phase * TAU * 2 - i * 0.6) * 0.03 * mv + (sp.tipo === 'depredador' ? -0.02 * f * k : 0);
     }
-    if (B.spine1) { B.spine1.rotation.y = Math.sin(this.phase * TAU) * 0.05 * (0.5 + mv) * (sp.scale > 0.9 ? 0.6 : 1); B.spine1.rotation.x = Math.sin(t * 1.7) * 0.008; }
+    if (B.spine1) { B.spine1.rotation.y = Math.sin(this.phase * TAU) * 0.05 * (0.5 + mv) * (sp.scale > 0.9 ? 0.6 : 1) - swing * 0.12; B.spine1.rotation.x = Math.sin(t * 1.7) * 0.008; }
     if (B.spine2) B.spine2.rotation.y = -Math.sin(this.phase * TAU) * 0.04 * mv;
     // cuello / cabeza
-    const graze = this.state === 'graze' ? 1 : 0, charge = this.state === 'charge' ? 1 : 0;
+    const graze = st === 'graze' ? 1 : 0, charge = st === 'charge' ? 1 : 0, alert = st === 'alert' || st === 'defend' ? 1 : 0, feed = st === 'feed' ? 1 : 0;
     this.grazeK = lerp(this.grazeK ?? 0, graze, Math.min(1, dt * 2.5));
     this.chargeK = lerp(this.chargeK ?? 0, charge, Math.min(1, dt * 4));
-    const ly = this.lookYaw ?? 0, lp = this.lookPitch ?? 0, n = this.neck.length;
+    this.alertK = lerp(this.alertK ?? 0, alert, Math.min(1, dt * 3));
+    this.feedK = lerp(this.feedK ?? 0, feed, Math.min(1, dt * 3));
+    const ly = this.lookYaw ?? 0, lp = this.lookPitch ?? 0;
     const bite = this.biteT >= 0 ? Math.sin(clamp(this.biteT, 0, 1) * Math.PI) : 0;
-    if (sp.id === 'braquiosaurio') {
+    const gz = this.grazeK, dk = this.dispK, ck = this.callK, ak = this.alertK, fk = this.feedK, cr = this.crouchK;
+    if (kind === 'braquio') {
       const wave = Math.sin(t * 0.35) * 0.05;
-      this.neck.forEach((nm, i) => { const b = B[nm]; b.rotation.x = (i === 0 ? -0.05 : 0.02) + wave * (i + 1) * 0.5 + this.grazeK * (i === 0 ? 0.0 : 0.18); b.rotation.y = ly * 0.25 + Math.sin(t * 0.2 + i) * 0.03; });
-      B.head.rotation.x = 0.1 + this.grazeK * 0.5 + Math.sin(t * 0.9) * 0.02; B.head.rotation.y = ly * 0.2;
-    } else if (sp.id === 'triceratops') {
-      B.neck1.rotation.x = 0.05 + this.grazeK * 0.55 + this.chargeK * 0.25 + Math.sin(this.phase * TAU * 2) * 0.02 * mv; B.neck1.rotation.y = ly * 0.5;
-      B.head.rotation.x = this.grazeK * 0.7 + this.chargeK * 0.35 - 0.05 + bite * 0.25; B.head.rotation.y = ly * 0.5;
-    } else if (sp.id === 'pteranodon') {
+      this.neck.forEach((nm, i) => { const b = B[nm]; b.rotation.x = (i === 0 ? -0.05 : 0.02) + wave * (i + 1) * 0.5 + gz * (i === 0 ? 0.0 : 0.18); b.rotation.y = ly * 0.25 + Math.sin(t * 0.2 + i) * 0.03; });
+      B.head.rotation.x = 0.1 + gz * 0.5 + Math.sin(t * 0.9) * 0.02; B.head.rotation.y = ly * 0.2;
+    } else if (kind === 'tricera') {
+      B.neck1.rotation.x = 0.05 + gz * 0.55 + this.chargeK * 0.25 + dk * 0.3 + Math.sin(this.phase * TAU * 2) * 0.02 * mv; B.neck1.rotation.y = ly * 0.5;
+      B.head.rotation.x = gz * 0.7 + this.chargeK * 0.35 + dk * 0.45 - 0.05 + bite * 0.25; B.head.rotation.y = ly * 0.5;
+    } else if (kind === 'ptera') {
       B.neck1.rotation.y = Math.sin(t * 0.9) * 0.1; B.head.rotation.x = Math.sin(t * 1.3) * 0.05 - (this.vy ?? 0) * 0.01;
+    } else if (kind === 'hadrosaurio') {
+      // cuello largo y móvil: baja al pastar, sube para vigilar y llamar
+      const up = Math.max(ak * 0.5, ck);
+      B.neck1.rotation.x = 0.08 + gz * 0.42 - up * 0.3 + Math.sin(this.phase * TAU * 2) * 0.025 * mv; B.neck1.rotation.y = ly * 0.45;
+      B.neck2.rotation.x = 0.04 + gz * 0.5 - up * 0.28 + Math.sin(t * 0.9 + this.id) * 0.02; B.neck2.rotation.y = ly * 0.4;
+      B.head.rotation.x = gz * 0.45 - up * 0.1 - ck * 0.18 + 0.05 + Math.sin(t * 1.3) * 0.015; B.head.rotation.y = ly * 0.3 + (st === 'idle' ? Math.sin(t * 0.6 + this.id) * 0.1 : 0);
+    } else if (kind === 'estegosaurio') {
+      B.neck1.rotation.x = 0.05 + gz * 0.4 + ak * 0.1; B.neck1.rotation.y = ly * 0.35;
+      B.neck2.rotation.x = gz * 0.3; B.neck2.rotation.y = ly * 0.3;
+      B.head.rotation.x = gz * 0.3 + 0.05 + bite * 0.2; B.head.rotation.y = ly * 0.25 + Math.sin(t * 0.5 + this.id) * 0.08;
+    } else if (kind === 'anquilosaurio') {
+      B.neck1.rotation.x = gz * 0.35 + ak * 0.12; B.neck1.rotation.y = ly * 0.4;
+      B.head.rotation.x = gz * 0.4 + 0.05 + bite * 0.2; B.head.rotation.y = ly * 0.3;
     } else {
       // terópodos: la cabeza se mantiene estable al correr y se proyecta al morder
-      const stab = -this.pitch * 0.5;
-      const bob = Math.sin(this.phase * TAU * 2) * 0.05 * mv;
-      B.neck1.rotation.x = stab * 0.3 - 0.12 * bite + lp * 0.3 + (this.state === 'alert' ? -0.1 : 0);
-      B.neck2.rotation.x = stab * 0.4 + bob + 0.08 * bite - lp * 0.3 + Math.sin(t * 1.1 + this.id) * 0.015;
-      B.head.rotation.x = stab * 0.3 - bob * 0.5 + 0.1 * bite + lp * 0.4;
-      B.neck1.rotation.y = ly * 0.35; B.neck2.rotation.y = ly * 0.4; B.head.rotation.y = ly * 0.35 + (this.state === 'idle' ? Math.sin(t * 0.7 + this.id * 3) * 0.12 : 0);
-      if (B.armL) for (const s of ['L', 'R']) { B[`arm${s}`].rotation.x = 0.35 + Math.sin(this.phase * TAU * 2) * 0.1 * mv; B[`forearm${s}`].rotation.x = -0.6; }
+      const stab = -this.pitch * 0.5, bob = Math.sin(this.phase * TAU * 2) * 0.05 * mv;
+      const long = kind === 'ornitomimo';
+      B.neck1.rotation.x = stab * 0.3 - 0.12 * bite + lp * 0.3 + (st === 'alert' ? -0.1 : 0) + cr * 0.18 - dk * 0.16 - ck * 0.15 + fk * 0.2;
+      B.neck2.rotation.x = stab * 0.4 + bob + 0.08 * bite - lp * 0.3 + Math.sin(t * 1.1 + this.id) * 0.015 + cr * 0.12 - dk * 0.1 - (long ? ck * 0.3 : 0) + fk * 0.25;
+      B.head.rotation.x = stab * 0.3 - bob * 0.5 + 0.1 * bite + lp * 0.4 + cr * 0.1 - dk * 0.12 + fk * 0.2;
+      B.neck1.rotation.y = ly * 0.35; B.neck2.rotation.y = ly * 0.4; B.head.rotation.y = ly * 0.35 + (st === 'idle' ? Math.sin(t * 0.7 + this.id * 3) * 0.12 : 0);
+      if (B.armL) for (const sd of ['L', 'R']) { B[`arm${sd}`].rotation.x = 0.35 + Math.sin(this.phase * TAU * 2) * 0.1 * mv; B[`forearm${sd}`].rotation.x = -0.6; }
     }
     // mandíbula: rugido / mordisco / respiración
     this.jawAnim = Math.max(0, (this.jawAnim ?? 0) - dt);
-    const open = Math.max(this.jaw, this.jawAnim > 0 ? Math.sin(clamp(1 - this.jawAnim / 1.2, 0, 1) * Math.PI) * 0.75 : 0);
+    const open = Math.max(this.jaw, this.jawAnim > 0 ? Math.sin(clamp(1 - this.jawAnim / 1.2, 0, 1) * Math.PI) * 0.75 : 0, this.display > 0 ? 0.55 * Math.sin(Math.min(1, (this.display) * 2) * Math.PI * 0.5) : 0);
     this.jaw = 0;
     if (B.jaw) B.jaw.rotation.x = open + 0.02 + Math.sin(t * 1.6) * 0.01;
   }
@@ -387,7 +402,7 @@ export class Creature {
     B.hips.rotation.set(0, 0, 0);
     if (B.jaw) B.jaw.rotation.x = lerp(B.jaw.rotation.x, 0.35, dt * 2);
     const gy = this.ctx.world.getHeight(this.position.x, this.position.z);
-    this.position.y = lerp(this.position.y, gy - Math.max(0, this.deathT - 40) * 0.12, Math.min(1, dt * 6));
+    this.position.y = lerp(this.position.y, gy - Math.max(0, this.deathT - 90) * 0.12, Math.min(1, dt * 6));
     if (this.flight) { this.position.y = Math.max(gy, this.position.y - 22 * dt); this.group.rotation.x += dt * 2; }
   }
 

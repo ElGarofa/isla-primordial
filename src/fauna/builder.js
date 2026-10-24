@@ -1,7 +1,7 @@
 // Constructor de mallas orgánicas con esqueleto: tubos elípticos a lo largo de curvas, con pesos de piel suaves entre huesos.
 import * as THREE from 'three';
 
-export const PART = { cuerpo: 0, ojo: 1, diente: 2, garra: 3, cuerno: 4, membrana: 5, boca: 6, gola: 7 };
+export const PART = { cuerpo: 0, ojo: 1, diente: 2, garra: 3, cuerno: 4, membrana: 5, boca: 6, gola: 7, cresta: 8, placa: 9 };
 
 const _a = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3(), _d = new THREE.Vector3();
 const UPY = new THREE.Vector3(0, 1, 0), UPZ = new THREE.Vector3(0, 0, 1);

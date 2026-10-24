@@ -1,10 +1,14 @@
 // Módulo UI: HUD, barra rápida, inventario/fabricación, mapa, menú principal, pausa, muerte y ajustes. Todo el texto en español.
-import { ITEMS } from '../core/items.js';
+import { ITEMS, TIPOS as TIPOS_ITEM, RANURAS, RANURA_NOMBRE, CALIDADES, HABILIDADES, NIVEL_XP } from '../core/items.js';
 import { CSS } from './style.js';
 import { iconUrl, STAT_SVG } from './icons.js';
+import { createAnimalPanel } from './animal.js';
 
 const SETTINGS_KEY = 'isla-primordial:ajustes:v1';
-const TIPOS = { recurso: 'Recurso', comida: 'Comida', bebida: 'Bebida', herramienta: 'Herramienta', arma: 'Arma', colocable: 'Colocable' };
+const TIPOS = TIPOS_ITEM;
+const HERR = { corta: 'algo que corte', perfora: 'un punzón', talar: 'un hacha', picar: 'un pico', martillar: 'un martillo' };
+const FILTROS = [['todo', 'Todo'], ['herramienta', 'Herramientas'], ['arma', 'Armas'], ['municion', 'Munición'], ['ropa', 'Ropa'], ['aparejo', 'Equipo animal'], ['otros', 'Otros']];
+const NOMBRE_CAL = ['Tosca', 'Normal', 'Buena', 'Excelente'];
 const CAUSAS = { Hambre: 'Murió de inanición', Sed: 'Murió de sed', Ahogamiento: 'Se ahogó', Frío: 'Murió de frío' };
 const TUTORIAL = [
   { txt: 'Golpea un árbol con las manos y reúne 3 de <b>madera</b>.', ok: (S) => Math.min(1, S.inventory.count('madera') / 3) },
@@ -44,12 +48,14 @@ export async function create(ctx) {
   // ------------------------------------------------------------------ HUD
   const hud = el(`
     <div class="dmg"></div>
-    <div class="compass"><div class="track"></div></div><div class="compass-mark" style="left:50%;top:14px;margin-left:0"></div>
+    <div class="compass"><div class="track"></div><div class="pins"></div></div><div class="compass-mark" style="left:50%;top:14px;margin-left:0"></div>
+    <div class="alerts"></div>
     <div class="clock"></div>
     <div class="goal panel"><h4>OBJETIVO</h4><p></p><div class="pg"><i></i></div></div>
     <div class="notifs"></div>
     <div class="cross"></div>
-    <div class="target"><div class="tn"></div><div class="ta"></div><div class="tb"><i></i></div></div>
+    <div class="target"><div class="tn"></div><div class="tr"></div><div class="ta"></div><div class="tb"><i></i></div></div>
+    <div class="ride"></div>
     <div class="hint"></div>
     <div class="slotname"></div>
     <div class="hotbar"></div>
@@ -61,6 +67,7 @@ export async function create(ctx) {
   root.append(hud);
   const fpsBox = $('.fpsbox', hud);
   const dmgEl = $('.dmg', hud), crossEl = $('.cross', hud), targetEl = $('.target', hud), hintEl = $('.hint', hud), slotNameEl = $('.slotname', hud);
+  const rideEl = $('.ride', hud);
   const hotbarEl = $('.hotbar', hud), notifs = $('.notifs', hud), goalEl = $('.goal', hud), clockEl = $('.clock', hud);
   const bars = {}; hud.querySelectorAll('.vit').forEach((v) => { bars[v.dataset.k] = { root: v, fill: $('.fill', v), val: $('.val', v), last: -1 }; });
   const tempEl = $('.temp', hud);
@@ -80,6 +87,51 @@ export async function create(ctx) {
     compassTrack.style.width = `${3 * 360 * PPD}px`; compassTrack.innerHTML = h;
   }
 
+  // alertas de fauna: marcas en la brújula + lista con flecha relativa, distancia aproximada y confianza
+  const pinsEl = $('.compass .pins', hud), alertsEl = $('.alerts', hud);
+  const alertas = []; // { key, tipo, rumbo, dist, conf, t, chip, pin, arr }
+  const ALERT_TXT = { jugador: 'Te han detectado', amenaza: 'Amenaza', llamada: 'Llamada de alerta', advertencia: 'Advertencia' };
+  const ALERT_ICO = { jugador: '👁', amenaza: '⚠', llamada: '♪', advertencia: '!' };
+  const ALERT_TTL = { jugador: 7, amenaza: 7, llamada: 5, advertencia: 4 };
+  ctx.events.on('fauna:alerta', (a) => {
+    if (ctx.state !== 'playing') return;
+    const key = `${a.especie}|${a.tipo}`;
+    let al = alertas.find((x) => x.key === key);
+    if (!al) {
+      al = { key, chip: el('', `al ${a.tipo}`), pin: el(ALERT_ICO[a.tipo] ?? '!', `pin ${a.tipo}`), arr: null };
+      al.chip.innerHTML = '<i class="arr">▲</i><span class="tx"></span><span class="dd"></span><span class="cf"></span>';
+      al.arr = $('.arr', al.chip);
+      alertsEl.append(al.chip); pinsEl.append(al.pin); alertas.push(al);
+      while (alertas.length > 4) { const o = alertas.shift(); o.chip.remove(); o.pin.remove(); }
+    }
+    al.tipo = a.tipo; al.rumbo = a.rumbo; al.dist = a.dist; al.conf = a.conf; al.t = ALERT_TTL[a.tipo] ?? 5;
+    const causa = a.causa ? ` · ${a.causa}` : '';
+    $('.tx', al.chip).innerHTML = `<b>${a.nombre ?? a.especie}</b> ${ALERT_TXT[a.tipo] ?? ''}${causa}`;
+    $('.dd', al.chip).textContent = `~${Math.max(5, Math.round(a.dist / 5) * 5)} m`;
+    const pips = a.conf > 0.66 ? 3 : a.conf > 0.33 ? 2 : 1;
+    $('.cf', al.chip).textContent = '●'.repeat(pips) + '○'.repeat(3 - pips);
+    al.chip.classList.remove('out'); al.chip.classList.remove('flash'); void al.chip.offsetWidth; al.chip.classList.add('flash');
+    if (a.tipo === 'jugador' || a.tipo === 'amenaza') snd('ui_click');
+  });
+  function updateAlertas(dt, heading) {
+    for (let i = alertas.length - 1; i >= 0; i--) {
+      const al = alertas[i];
+      al.t -= dt;
+      if (al.t <= 0 || ctx.state !== 'playing') { al.chip.remove(); al.pin.remove(); alertas.splice(i, 1); continue; }
+      let rel = ((al.rumbo - heading) % 360 + 540) % 360 - 180;
+      al.arr.style.transform = `rotate(${rel.toFixed(0)}deg)`;
+      const x = 210 + rel * PPD, vis = Math.abs(rel * PPD) < 200;
+      al.pin.style.transform = `translateX(${x.toFixed(1)}px) translateX(-50%)`;
+      al.pin.style.opacity = vis ? String(Math.min(1, 0.35 + al.conf * 0.65) * Math.min(1, al.t / 1.2)) : '0';
+      al.chip.classList.toggle('out', al.t < 0.8);
+    }
+  }
+
+  // objetos con estado: barra de durabilidad y borde de calidad
+  const durFrac = (s) => (s?.dur != null ? Math.max(0, Math.min(1, s.dur / Math.max(1, S.durMaxDe(s.item, s.cal ?? 1, s.rep ?? 0)))) : null);
+  const barraDur = (s) => { const f = durFrac(s); return f == null ? '' : `<i class="db ${f < 0.15 ? 'bad' : f < 0.4 ? 'low' : ''}" style="width:${Math.round(f * 100)}%"></i>`; };
+  const calClase = (s) => (s.dur != null ? `q${s.cal ?? 1}` : '');
+
   // barra rápida
   let hotbarDirty = true, lastSel = -1, nameTimer = 0;
   function renderHotbar() {
@@ -87,7 +139,7 @@ export async function create(ctx) {
     let h = '';
     for (let i = 0; i < 9; i++) {
       const s = S.slots[i];
-      h += `<div class="slot ${i === S.selected ? 'sel' : ''}"><span class="n">${i + 1}</span>${s ? `<img src="${iconUrl(s.item)}" alt="">${s.cantidad > 1 ? `<span class="c">${s.cantidad}</span>` : ''}` : ''}</div>`;
+      h += `<div class="slot ${i === S.selected ? 'sel' : ''} ${s ? calClase(s) : ''}"><span class="n">${i + 1}</span>${s ? `<img src="${iconUrl(s.item)}" alt="">${s.cantidad > 1 ? `<span class="c">${s.cantidad}</span>` : ''}${barraDur(s)}` : ''}</div>`;
     }
     hotbarEl.innerHTML = h;
     const sel = S.slots[S.selected];
@@ -95,9 +147,11 @@ export async function create(ctx) {
     let hint = '';
     if (sel) {
       const it = ITEMS[sel.item];
-      if (it.tipo === 'comida') hint = `<span class="key">F</span>Comer ${it.nombre.toLowerCase()}`;
+      if (it.tipo === 'comida') hint = `<span class="key">F</span>${it.verbo ?? 'Comer'} ${it.nombre.toLowerCase()}`;
       else if (it.tipo === 'bebida') hint = `<span class="key">F</span>Beber`;
       else if (it.tipo === 'colocable') hint = `<span class="key">F</span>Colocar ${it.nombre.toLowerCase()}`;
+      else if (it.tipo === 'ropa') hint = `<span class="key">F</span>Vestir ${it.nombre.toLowerCase()}`;
+      else if (it.distancia && it.municion && S.municion(it.municion) < 0) hint = `<span style="color:var(--bad)">Sin ${it.municion === 'flecha' ? 'flechas' : 'guijarros'}</span>`;
     }
     if (hintEl.dataset.h !== hint) { hintEl.dataset.h = hint; hintEl.innerHTML = hint; }
   }
@@ -140,13 +194,21 @@ export async function create(ctx) {
     lastItem = { item, n: cantidad, t: now, el: n, to1: setTimeout(() => n.classList.add('out'), 2800), to2: setTimeout(() => n.remove(), 3400) };
   });
 
+  // aprendizaje y oficios
+  ctx.events.on('saber:aprendido', ({ nombre }) => { notify(`Aprendiste a fabricar: ${nombre}`, 'ok'); snd('ui_open'); if (openPanel === 'inventario') renderInventory(); });
+  ctx.events.on('saber:nivel', ({ nombre, nivel }) => { notify(`${nombre}: nivel ${nivel}`, 'ok'); });
+  ctx.events.on('crafted', ({ item, cal, cantidad }) => { if (ITEMS[item]?.dur && cal !== 1) notify(`Fabricaste ${ITEMS[item].nombre} (${NOMBRE_CAL[cal]})`, cal > 1 ? 'ok' : 'warn'); });
+
   // objetivo apuntado
   ctx.events.on('player:target', (t) => {
     if (!t) { targetEl.classList.remove('on'); crossEl.classList.remove('on'); return; }
     $('.tn', targetEl).textContent = t.nombre ?? '';
     const gestos = ['Talar', 'Picar', 'Atacar'];
     const accion = t.accion ?? '';
-    $('.ta', targetEl).innerHTML = accion ? `<span class="key">${gestos.includes(accion) ? 'Clic' : 'E'}</span>${accion}` : '';
+    const rl = t.rel;
+    // criaturas con trato posible: nivel de relación, habituación/confianza y la acción de la tecla E
+    $('.tr', targetEl).innerHTML = rl ? `<span class="nv n${rl.nivel}">Nivel ${rl.nivel} · ${rl.nivelNombre}</span>${rl.max > 0 && !rl.propio ? `<span class="mt">Habituación ${Math.round(Math.min(1, rl.hab) * 100)} %${rl.hab >= 1 ? ` · Confianza ${Math.round(rl.conf * 100)} %` : ''}</span>` : ''}` : '';
+    $('.ta', targetEl).innerHTML = (accion ? `<span class="key">${gestos.includes(accion) ? 'Clic' : 'E'}</span>${accion}` : '') + (rl?.accionE ? ` &nbsp; <span class="key">E</span>${rl.accionE}` : '') + (rl?.montable ? ' &nbsp; <span class="key">G</span>Montar' : '');
     const tb = $('.tb', targetEl);
     if (t.vida != null && t.vida < 100) { tb.style.display = ''; $('i', tb).style.width = `${Math.max(0, t.vida)}%`; } else tb.style.display = 'none';
     targetEl.classList.add('on'); crossEl.classList.add('on');
@@ -240,7 +302,9 @@ export async function create(ctx) {
     <span><span class="key">Ctrl</span></span><span>Agacharse</span>
     <span><span class="key">Espacio</span></span><span>Saltar / nadar hacia arriba</span>
     <span><span class="key">Clic izq.</span></span><span>Golpear, talar, picar, atacar</span>
-    <span><span class="key">E</span></span><span>Interactuar, recoger, beber</span>
+    <span><span class="key">E</span></span><span>Interactuar, recoger, beber; con un animal: ofrecer comida, cabestro o abrir su panel</span>
+    <span><span class="key">G</span></span><span>Montar / desmontar un animal domesticado con montura</span>
+    <span><span class="key">Mayús</span> montado</span><span>Galope (W trote, S frena, A/D desvían)</span>
     <span><span class="key">1–9</span> / rueda</span><span>Elegir objeto de la barra</span>
     <span><span class="key">F</span></span><span>Usar objeto: comer, beber, colocar fogata</span>
     <span><span class="key">Tab</span></span><span>Inventario y fabricación</span>
@@ -257,57 +321,135 @@ export async function create(ctx) {
 
   // ---- inventario
   screens.inventario = el('', 'screen dim hide');
-  let invSel = 0, dragFrom = -1;
-  function itemDetail(i) {
-    const s = S.slots[i];
+  let invSel = 0, dragFrom = -1, recFiltro = 'todo', soloPosibles = false, verPistas = false;
+  const kg = (n) => `${(Math.round(n * 10) / 10).toString().replace('.', ',')} kg`;
+  const lt = (n) => `${(Math.round(n * 10) / 10).toString().replace('.', ',')} L`;
+  const stackDe = (sel) => (typeof sel === 'string' ? S.equipo[sel.slice(3)] : S.slots[sel]);
+
+  function itemDetail(sel) {
+    const s = stackDe(sel);
     if (!s) return '<div class="dd">Casilla vacía. Arrastra objetos para organizarlos; las 9 primeras forman tu barra rápida.</div>';
-    const it = ITEMS[s.item];
+    const it = ITEMS[s.item], puesto = typeof sel === 'string';
     const fx = [];
     if (it.comida) fx.push(`+${it.comida} hambre`); if (it.sed) fx.push(`+${it.sed} sed`); if (it.vida) fx.push(`${it.vida > 0 ? '+' : ''}${it.vida} vida`);
-    if (it.dano) fx.push(`${it.dano} de daño`); if (it.talar) fx.push('tala árboles'); if (it.picar) fx.push('rompe rocas'); if (it.alcance) fx.push(`alcance ${it.alcance} m`);
+    const q = CALIDADES[s.cal ?? 1].mult;
+    if (it.dano && it.tipo !== 'municion') fx.push(`${Math.round(it.dano * (it.dur ? q : 1))} de daño`); if (it.tipo === 'municion') fx.push(`${it.dano} de daño al impacto`);
+    if (it.talar) fx.push('tala árboles'); if (it.picar) fx.push('rompe rocas'); if (it.alcance && !it.distancia) fx.push(`alcance ${it.alcance} m`);
+    if (it.etiquetas?.includes('corta')) fx.push('corta y despieza');
+    if (it.penetra) fx.push(`penetra ${Math.round(it.penetra * 100)} % de coraza`); if (it.aturde) fx.push(`aturde ${Math.round(it.aturde * 100)} %`);
+    if (it.distancia) fx.push(it.municion ? `dispara ${it.municion === 'flecha' ? 'flechas' : 'guijarros'}` : 'se arroja');
+    if (it.armadura) fx.push(`armadura ${Math.round(it.armadura * q * 10) / 10}`); if (it.abrigo) fx.push(`abrigo +${Math.round(it.abrigo * q * 10) / 10}`);
+    if (it.ranura) fx.push(`ranura: ${RANURA_NOMBRE[it.ranura]}`); if (it.ruido && it.ruido !== 1) fx.push(it.ruido > 1 ? 'hace ruido al moverte' : 'te vuelve silencioso');
+    if (it.aparejo) { const a = it.aparejo; fx.push(`equipo animal: ${a.ranura}`); if (a.monta) fx.push(`montura ${a.monta}`); if (a.carga) fx.push(`carga ${a.carga.peso} kg / ${a.carga.vol} L`); if (a.armadura) fx.push(`−${Math.round(a.armadura * 100)} % de daño al animal`); if (a.manejo) fx.push('se coloca ofreciéndole comida a un animal confiado y pulsando E'); else fx.push('se coloca desde el panel de un animal domesticado (E sobre él)'); }
+    if (it.impermeable) fx.push('impermeable'); if (it.capacidad) fx.push(`+${it.capacidad} kg y +${it.volumen} L de carga`);
+    const f = durFrac(s), estado = f != null ? S.estadoDe(s) : null;
+    const durHtml = f != null ? `<div class="durl"><span>${estado}${(s.rep ?? 0) ? ` · remendado ×${s.rep}` : ''}</span><span class="bar"><i class="${f < 0.15 ? 'bad' : f < 0.4 ? 'low' : ''}" style="width:${Math.round(f * 100)}%"></i></span><span>${Math.max(0, Math.round(s.dur))}/${S.durMaxDe(s.item, s.cal ?? 1, s.rep ?? 0)}</span></div>` : '';
+    const peso = `<div class="pv">${kg(it.peso)} · ${lt(it.vol)} por unidad${s.cantidad > 1 ? ` (${kg(it.peso * s.cantidad)} en total)` : ''}</div>`;
     const usable = it.tipo === 'comida' || it.tipo === 'bebida' || it.tipo === 'colocable';
     const tool = it.tipo === 'herramienta' || it.tipo === 'arma';
-    return `<div class="dt">${TIPOS[it.tipo] ?? it.tipo}</div><div class="dn">${it.nombre}${s.cantidad > 1 ? ` ×${s.cantidad}` : ''}</div>
-      <div class="dd">${it.descripcion}${fx.length ? `<br><span style="color:var(--acc2)">${fx.join(' · ')}</span>` : ''}</div>
-      <div class="acts">${usable ? `<button class="btn sm" data-a="usar">${it.tipo === 'comida' ? 'Comer' : it.tipo === 'bebida' ? 'Beber' : 'Colocar'}</button>` : ''}${tool ? `<button class="btn sm" data-a="equipar">Equipar</button>` : ''}<button class="btn sm" data-a="soltar">Soltar</button></div>`;
+    const calHtml = it.dur ? ` <span class="cal q${s.cal ?? 1}">${NOMBRE_CAL[s.cal ?? 1]}</span>` : '';
+    let rep = '';
+    if (!puesto && f != null && it.reparar) {
+      const falta = Object.entries(it.reparar).map(([m, n]) => { const have = S.inventory.count(m); return `<span class="${have >= n ? '' : 'no'}">${ITEMS[m].nombre} ${Math.min(have, 99)}/${n}</span>`; }).join('');
+      const max = (s.rep ?? 0) >= 4;
+      rep = `<div class="repl">Reparar: ${falta}${max ? ' <span class="no">demasiado remendado</span>' : ''}</div>`;
+    }
+    const acts = puesto
+      ? `<button class="btn sm" data-a="quitar">Quitar</button>`
+      : `${usable ? `<button class="btn sm" data-a="usar">${it.tipo === 'comida' ? (it.verbo ?? 'Comer') : it.tipo === 'bebida' ? 'Beber' : 'Colocar'}</button>` : ''}${it.tipo === 'ropa' ? `<button class="btn sm" data-a="vestir">Vestir</button>` : ''}${tool ? `<button class="btn sm" data-a="equipar">Equipar</button>` : ''}${f != null && it.reparar ? `<button class="btn sm" data-a="reparar" ${f > 0.95 || (s.rep ?? 0) >= 4 ? 'disabled' : ''}>Reparar</button>` : ''}<button class="btn sm" data-a="soltar">Soltar</button>`;
+    return `<div class="dt">${TIPOS[it.tipo] ?? it.tipo}${puesto ? ' · puesto' : ''}</div><div class="dn">${it.nombre}${s.cantidad > 1 ? ` ×${s.cantidad}` : ''}${calHtml}</div>
+      <div class="dd">${it.descripcion}${fx.length ? `<br><span style="color:var(--acc2)">${fx.join(' · ')}</span>` : ''}</div>${durHtml}${peso}${rep}
+      <div class="acts">${acts}</div>`;
   }
+
+  function cargaHtml() {
+    const w = S.inventory.peso(), v = S.inventory.volumen(), cap = S.inventory.capacidad();
+    const pw = w / cap.peso, pv = v / cap.volumen;
+    const cls = (r) => (r > 1 ? 'bad' : r > 0.85 ? 'low' : '');
+    return `<div class="carga"><div><span>Peso <b>${kg(w)}</b> / ${kg(cap.peso)}${pw > 1 ? ' · vas lento' : ''}</span><span class="bar"><i class="${cls(pw)}" style="width:${Math.min(100, Math.round(pw * 100))}%"></i></span></div>
+      <div><span>Volumen <b>${lt(v)}</b> / ${lt(cap.volumen)}</span><span class="bar"><i class="${cls(pv)}" style="width:${Math.min(100, Math.round(pv * 100))}%"></i></span></div></div>`;
+  }
+  function equipoHtml() {
+    return `<div class="equipo">${RANURAS.map((r) => {
+      const e = S.equipo[r];
+      return `<div class="eq"><div class="slot ${e ? calClase(e) : ''} ${invSel === `eq:${r}` ? 'sel' : ''}" data-eq="${r}" title="${e ? ITEMS[e.item].nombre : RANURA_NOMBRE[r]}">${e ? `<img src="${iconUrl(e.item)}" alt="">${barraDur(e)}` : `<span class="ph">${RANURA_NOMBRE[r].slice(0, 3)}</span>`}</div><span>${RANURA_NOMBRE[r]}</span></div>`;
+    }).join('')}<div class="eqs"><span>Armadura <b>${Math.round(S.armadura() * 10) / 10}</b></span><span>Abrigo <b>+${Math.round(S.abrigo() * 10) / 10}</b></span></div></div>`;
+  }
+  function oficiosHtml() {
+    return `<div class="oficios">${Object.entries(HABILIDADES).map(([k, h]) => {
+      const xp = S.saber.xp[k], n = S.saber.nivel(k), a = NIVEL_XP[n], b = NIVEL_XP[n + 1];
+      const pct = b == null ? 100 : Math.round(((xp - a) / (b - a)) * 100);
+      return `<div class="of" title="${h.desc}"><span>${h.nombre.split(' y ')[0]} <b>${n}</b></span><span class="bar"><i style="width:${pct}%"></i></span></div>`;
+    }).join('')}</div>`;
+  }
+  const catDe = (r) => { const t = ITEMS[r.id].tipo; return t === 'herramienta' || t === 'arma' || t === 'municion' || t === 'ropa' || t === 'aparejo' ? t : 'otros'; };
+
+  function recetaHtml(r) {
+    const costs = Object.entries(r.costo).map(([id, n]) => { const have = S.inventory.count(id); return `<span class="${have >= n ? '' : 'no'}">${ITEMS[id].nombre} ${Math.min(have, 999)}/${n}</span>`; }).join('');
+    const reqs = [];
+    if (r.herramienta) reqs.push(`<span class="${r.herramientaOk ? '' : 'no'}">${r.herramientaOk ? '✓' : '✗'} ${(HERR[r.herramienta] ?? r.herramienta).replace(/^./, (m) => m.toUpperCase())}</span>`);
+    if (r.hab.nivel > 0) reqs.push(`<span class="${r.nivelOk ? '' : 'no'}">${r.nivelOk ? '✓' : '✗'} ${HABILIDADES[r.hab.tipo].nombre.split(' y ')[0]} nivel ${r.hab.nivel}</span>`);
+    if (r.estacion) reqs.push(`<span class="${r.estacionOk ? '' : 'no'}">${r.estacionOk ? '✓' : '✗'} Fogata encendida cerca</span>`);
+    const it = ITEMS[r.id];
+    const sub = [it.dano ? `${it.dano} daño` : '', it.armadura ? `armadura ${it.armadura}` : '', it.abrigo ? `abrigo +${it.abrigo}` : ''].filter(Boolean).join(' · ');
+    return `<div class="rec ${r.posible ? 'ok' : ''}"><img src="${iconUrl(r.id)}" alt=""><div><div class="rn">${r.nombre}${r.cantidad > 1 ? ` ×${r.cantidad}` : ''}${r.variante ? ` <small>(${r.variante})</small>` : ''}</div>${sub ? `<div class="rs">${sub}</div>` : ''}<div class="rc">${costs}</div>${reqs.length ? `<div class="rq">${reqs.join('')}</div>` : ''}</div><button class="btn sm" data-craft="${r.clave}" ${r.posible ? '' : 'disabled'}>Fabricar</button></div>`;
+  }
+
   function renderInventory() {
     const st = S.stats;
     let grid = '';
     for (let i = 0; i < S.slots.length; i++) {
       const s = S.slots[i];
-      grid += `<div class="slot ${i < 9 ? 'hb' : ''} ${i === invSel ? 'sel' : ''}" draggable="true" data-i="${i}">${i < 9 ? `<span class="n">${i + 1}</span>` : ''}${s ? `<img src="${iconUrl(s.item)}" alt="">${s.cantidad > 1 ? `<span class="c">${s.cantidad}</span>` : ''}` : ''}</div>`;
+      grid += `<div class="slot ${i < 9 ? 'hb' : ''} ${i === invSel ? 'sel' : ''} ${s ? calClase(s) : ''}" draggable="true" data-i="${i}">${i < 9 ? `<span class="n">${i + 1}</span>` : ''}${s ? `<img src="${iconUrl(s.item)}" alt="">${s.cantidad > 1 ? `<span class="c">${s.cantidad}</span>` : ''}${barraDur(s)}` : ''}</div>`;
     }
-    const recs = S.recipes.map((r) => S.recipeInfo(r)).sort((a, b) => Number(b.posible) - Number(a.posible));
-    const recHtml = recs.map((r) => {
-      const costs = Object.entries(r.costo).map(([id, n]) => { const have = S.inventory.count(id); return `<span class="${have >= n ? '' : 'no'}">${ITEMS[id].nombre} ${Math.min(have, 999)}/${n}</span>`; }).join('');
-      return `<div class="rec ${r.posible ? 'ok' : ''}"><img src="${iconUrl(r.id)}" alt=""><div><div class="rn">${r.nombre}${r.cantidad > 1 ? ` ×${r.cantidad}` : ''}</div><div class="rc">${costs}</div>${r.estacion && !r.estacionOk ? '<div class="st">Requiere una fogata encendida cerca</div>' : ''}</div><button class="btn sm" data-craft="${r.id}" ${r.posible ? '' : 'disabled'}>Fabricar</button></div>`;
-    }).join('');
+    const todas = S.recipes.map((r) => S.recipeInfo(r));
+    const conocidas = todas.filter((r) => r.conocida && (recFiltro === 'todo' || catDe(r) === recFiltro) && (!soloPosibles || r.posible)).sort((a, b) => Number(b.posible) - Number(a.posible));
+    const ocultas = todas.filter((r) => !r.conocida);
+    const recHtml = conocidas.map(recetaHtml).join('') || '<div class="vacio">Nada que mostrar con este filtro.</div>';
+    const pistas = verPistas ? ocultas.filter((r) => r.pista).map((r) => `<div class="pista">${r.pista}</div>`).join('') : '';
+    const tabs = FILTROS.map(([k, n]) => `<button class="tab ${k === recFiltro ? 'on' : ''}" data-f="${k}">${n}</button>`).join('');
     screens.inventario.innerHTML = `<div class="panel inv">
       <div class="left"><h3>MOCHILA</h3>
         <div class="statline"><span>Vida <b>${Math.round(st.vida)}</b></span><span>Hambre <b>${Math.round(st.hambre)}</b></span><span>Sed <b>${Math.round(st.sed)}</b></span><span>Energía <b>${Math.round(st.energia)}</b></span><span>Temp. <b>${Math.round(st.temperatura)}°C</b></span></div>
+        ${equipoHtml()}${cargaHtml()}
         <div class="grid">${grid}</div><div class="detail">${itemDetail(invSel)}</div></div>
-      <div class="right"><h3>FABRICACIÓN</h3><div class="recipes">${recHtml}</div></div></div>`;
+      <div class="right"><h3>FABRICACIÓN</h3>${oficiosHtml()}
+        <div class="tabs">${tabs}<label class="chk"><input type="checkbox" data-posibles ${soloPosibles ? 'checked' : ''}> solo posibles</label></div>
+        <div class="recipes">${recHtml}
+          <div class="ocultas"><button class="btn sm" data-pistas>${verPistas ? 'Ocultar pistas' : `${ocultas.length} recetas por descubrir · ver pistas`}</button>${pistas}</div></div></div></div>`;
   }
   screens.inventario.addEventListener('click', (e) => {
     const slot = e.target.closest('.slot[data-i]');
     if (slot) { invSel = +slot.dataset.i; snd(); renderInventory(); return; }
+    const eq = e.target.closest('[data-eq]');
+    if (eq) { invSel = `eq:${eq.dataset.eq}`; snd(); renderInventory(); return; }
+    const f = e.target.closest('[data-f]');
+    if (f) { recFiltro = f.dataset.f; snd(); renderInventory(); return; }
+    if (e.target.closest('[data-pistas]')) { verPistas = !verPistas; snd(); renderInventory(); return; }
+    if (e.target.matches('[data-posibles]')) { soloPosibles = e.target.checked; renderInventory(); return; }
     const c = e.target.closest('[data-craft]');
     if (c) { S.craft(c.dataset.craft); renderInventory(); return; }
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a) { if (e.target === screens.inventario) toggleInventory(false); return; }
     snd();
-    if (a === 'usar') S.consume(invSel);
-    if (a === 'equipar') { if (invSel < 9) S.select(invSel); else { S.inventory.move(invSel, S.selected); invSel = S.selected; S.select(S.selected); } }
-    if (a === 'soltar') { S.inventory.drop(invSel); }
+    if (a === 'quitar') { if (S.desequipar(invSel.slice(3))) invSel = 0; }
+    else if (typeof invSel === 'number') {
+      if (a === 'usar') S.consume(invSel);
+      if (a === 'vestir') S.equipar(invSel);
+      if (a === 'reparar') S.reparar(invSel);
+      if (a === 'equipar') { if (invSel < 9) S.select(invSel); else { S.inventory.move(invSel, S.selected); invSel = S.selected; S.select(S.selected); } }
+      if (a === 'soltar') { S.inventory.drop(invSel); }
+    }
+    if (typeof invSel === 'string' && !S.equipo[invSel.slice(3)]) invSel = 0;
     renderInventory();
   });
-  screens.inventario.addEventListener('dblclick', (e) => { const slot = e.target.closest('.slot[data-i]'); if (slot) { S.consume(+slot.dataset.i); renderInventory(); } });
+  screens.inventario.addEventListener('dblclick', (e) => { const slot = e.target.closest('.slot[data-i]'); if (slot) { S.consume(+slot.dataset.i); renderInventory(); } const eq = e.target.closest('[data-eq]'); if (eq) { S.desequipar(eq.dataset.eq); invSel = 0; renderInventory(); } });
   screens.inventario.addEventListener('contextmenu', (e) => { e.preventDefault(); const slot = e.target.closest('.slot[data-i]'); if (slot) { S.consume(+slot.dataset.i); renderInventory(); } });
   screens.inventario.addEventListener('dragstart', (e) => { const s = e.target.closest('.slot[data-i]'); if (!s) return; dragFrom = +s.dataset.i; e.dataTransfer.setData('text/plain', String(dragFrom)); e.dataTransfer.effectAllowed = 'move'; });
   screens.inventario.addEventListener('dragover', (e) => { const s = e.target.closest('.slot[data-i]'); if (s) { e.preventDefault(); s.classList.add('over'); } });
   screens.inventario.addEventListener('dragleave', (e) => { e.target.closest?.('.slot')?.classList.remove('over'); });
   screens.inventario.addEventListener('drop', (e) => { const s = e.target.closest('.slot[data-i]'); if (!s) return; e.preventDefault(); S.inventory.move(dragFrom, +s.dataset.i); invSel = +s.dataset.i; renderInventory(); snd(); });
+  ctx.events.on('equipo:cambio', () => { if (openPanel === 'inventario') renderInventory(); });
 
   function toggleInventory(force) {
     const open = force ?? openPanel !== 'inventario';
@@ -359,6 +501,15 @@ export async function create(ctx) {
     else { closeScreens(); lock(); snd('ui_close'); }
   }
 
+  // ---- panel de animal propio
+  const animal = createAnimalPanel(ctx, { el, showScreen, closeScreens, unlock, lock, snd });
+  screens.animal = animal.screen;
+  ui.abrirAnimal = (c) => animal.abrir(c);
+  for (const ev of ['fauna:ofrenda', 'fauna:manejo', 'fauna:equipado', 'fauna:orden', 'fauna:domesticada', 'fauna:vinculo_perdido', 'fauna:liberada']) ctx.events.on(ev, () => { if (openPanel === 'animal') animal.render(); });
+  ctx.events.on('inventory:changed', () => { if (openPanel === 'animal') animal.render(); });
+  ctx.events.on('fauna:habituada', ({ nombre }) => { notify(`${nombre} se ha habituado a tu presencia`, 'ok'); snd('ui_open'); });
+  ctx.events.on('saber:nivel', ({ hab, nombre, nivel }) => { void hab; void nombre; void nivel; });
+
   for (const s of Object.values(screens)) root.append(s);
 
   // ------------------------------------------------------------------ entrada y estados
@@ -368,11 +519,13 @@ export async function create(ctx) {
     if (action === 'pausa') {
       const now = performance.now(); if (now - lastPause < 300) return; lastPause = now;
       if (ctx.state === 'dead' || ctx.state === 'menu' || ctx.state === 'loading') return;
+      if (openPanel === 'animal') { animal.cerrar(); return; }
       if (openPanel === 'inventario' || openPanel === 'mapa') { closeScreens(); return; }
       if (ctx.state === 'playing') { ctx.setState('paused'); showScreen('pausa'); }
       else if (ctx.state === 'paused') { if (openPanel === 'ajustes' || openPanel === 'controles') showScreen('pausa'); else resume(); }
     }
-    if (action === 'inventario') { if (ctx.state === 'playing') toggleInventory(); }
+    if (action === 'interactuar' && openPanel === 'animal') { animal.cerrar(); return; }
+    if (action === 'inventario') { if (openPanel === 'animal') { animal.cerrar(); return; } if (ctx.state === 'playing') toggleInventory(); }
     if (action === 'mapa') { if (ctx.state === 'playing') toggleMap(); }
   });
   ctx.events.on('state', ({ state }) => {
@@ -424,6 +577,7 @@ export async function create(ctx) {
       // brújula
       const heading = ((-ctx.player.yaw * 180) / Math.PI % 360 + 360) % 360;
       compassTrack.style.transform = `translateX(${210 - (heading + 360) * PPD}px)`;
+      updateAlertas(ctx.time.realDt, heading);
       // reloj
       clockT -= ctx.time.realDt; if (clockT <= 0) {
         clockT = 0.5;
@@ -432,6 +586,10 @@ export async function create(ctx) {
         clockEl.innerHTML = `<b>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</b> &nbsp;·&nbsp; DÍA ${dia}`;
       }
       updateGoal(ctx.time.realDt);
+      animal.vigilar();
+      const mc = ctx.player.montura;
+      const rtxt = mc ? `<span class="key">G</span>Desmontar &nbsp; <span class="key">W</span>trote &nbsp; <span class="key">Mayús</span>galope (energía ${Math.round(mc.energia * 100)} %) &nbsp; <span class="key">S</span>frena` : '';
+      if (rideEl.dataset.h !== rtxt) { rideEl.dataset.h = rtxt; rideEl.innerHTML = rtxt; rideEl.classList.toggle('on', !!rtxt); }
       if (cfg.fps) { fpsAcc += ctx.time.realDt; fpsN++; if (fpsAcc > 0.5) { fpsBox.textContent = `${Math.round(fpsN / fpsAcc)} FPS`; fpsAcc = 0; fpsN = 0; } }
     },
   };

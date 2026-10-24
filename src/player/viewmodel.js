@@ -114,6 +114,9 @@ export function createViewmodel(ctx) {
     fibre: new THREE.MeshStandardMaterial({ color: 0xffffff, map: fibreTexture(), roughness: 0.95 }),
     ember: new THREE.MeshStandardMaterial({ color: 0x2a1408, emissive: 0xff6a1a, emissiveIntensity: 2.2, roughness: 0.9 }),
     char: new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 1 }),
+    bone: new THREE.MeshStandardMaterial({ color: 0xe6dfc8, roughness: 0.6, flatShading: true }),
+    horn: new THREE.MeshStandardMaterial({ color: 0xcdbb94, roughness: 0.55, flatShading: true }),
+    leather: new THREE.MeshStandardMaterial({ color: 0x7a4e2c, roughness: 0.9 }),
   };
   M.wood.map.repeat.set(1, 2);
   for (const m of Object.values(M)) ctx.lighting?.setupMaterial?.(m, { fog: false });
@@ -243,7 +246,122 @@ export function createViewmodel(ctx) {
       g.userData.tip = new THREE.Vector3(0, 0.6, 0);
       return g;
     },
+    cuchillo_piedra() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.1, 0.13, 0.016, 0.0145), M.wood));
+      g.add(stoneMesh(jitter(extrudePoly([[0.012, 0.12], [0.03, 0.2], [0.012, 0.3], [-0.004, 0.33], [-0.02, 0.2], [-0.012, 0.12]], 0.012, 0.003), 0.002)));
+      g.add(lash(0.13, 0.017, 0.005), lash(0.145, 0.017, 0.005));
+      g.userData.tip = new THREE.Vector3(0, 0.33, 0);
+      return g;
+    },
+    cuchillo_hueso() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.1, 0.12, 0.015, 0.014), M.wood));
+      const blade = new THREE.Mesh(jitter(extrudePoly([[0.01, 0.11], [0.026, 0.19], [0.014, 0.3], [0, 0.36], [-0.016, 0.2], [-0.01, 0.11]], 0.01, 0.003), 0.0015), M.bone);
+      g.add(blade); g.add(lash(0.12, 0.016, 0.005));
+      g.userData.tip = new THREE.Vector3(0, 0.36, 0);
+      return g;
+    },
+    cuchillo_diente() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.1, 0.12, 0.015, 0.014), M.wood));
+      const tooth = new THREE.Mesh(jitter(extrudePoly([[0.024, 0.1], [0.03, 0.18], [0.012, 0.3], [-0.004, 0.35], [-0.01, 0.22], [-0.024, 0.1]], 0.016, 0.004), 0.002), M.bone);
+      g.add(tooth); g.add(lash(0.115, 0.018, 0.006), lash(0.13, 0.018, 0.006));
+      for (let i = 0; i < 6; i++) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.008, 0.018), M.char); t.position.set(0.005, 0.15 + i * 0.03, 0); g.add(t); }
+      g.userData.tip = new THREE.Vector3(0, 0.35, 0);
+      return g;
+    },
+    punzon_hueso() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.08, 0.1, 0.013, 0.012), M.wood));
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.24, 8), M.bone); spike.position.y = 0.22; g.add(spike);
+      g.add(lash(0.1, 0.014, 0.004));
+      g.userData.tip = new THREE.Vector3(0, 0.34, 0);
+      return g;
+    },
+    martillo_piedra() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.17, 0.46, 0.0185, 0.0155), M.wood));
+      const head = stoneMesh(jitter(new THREE.BoxGeometry(0.2, 0.09, 0.09, 3, 2, 2), 0.012)); head.position.y = 0.44; g.add(head);
+      for (const y of [0.4, 0.415, 0.47, 0.485]) g.add(lash(y, 0.024, 0.0055));
+      const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), M.wood); pommel.position.y = -0.17; g.add(pommel);
+      g.userData.tip = new THREE.Vector3(0, 0.44, -0.1);
+      return g;
+    },
+    garrote() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.16, 0.56, 0.02, 0.036, 0.007), M.wood));
+      const knob = new THREE.Mesh(jitter(new THREE.SphereGeometry(0.04, 10, 8), 0.01), M.wood); knob.position.y = 0.58; g.add(knob);
+      g.add(lash(-0.02, 0.022, 0.006), lash(-0.04, 0.022, 0.006));
+      g.userData.tip = new THREE.Vector3(0, 0.58, 0);
+      return g;
+    },
+    maza_piedra() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.17, 0.5, 0.0185, 0.0155), M.wood));
+      const head = stoneMesh(jitter(new THREE.DodecahedronGeometry(0.085, 0), 0.02)); head.position.y = 0.52; head.scale.set(1, 1.1, 1); g.add(head);
+      for (const y of [0.43, 0.445, 0.46]) g.add(lash(y, 0.022, 0.0055));
+      const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), M.wood); pommel.position.y = -0.17; g.add(pommel);
+      g.userData.tip = new THREE.Vector3(0, 0.55, -0.05);
+      return g;
+    },
+    lanza_hueso() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.5, 1.28, 0.0165, 0.0125, 0.006), M.wood));
+      g.add(new THREE.Mesh(jitter(extrudePoly([[0, 1.2], [0.03, 1.27], [0.012, 1.42], [0, 1.5], [-0.012, 1.42], [-0.03, 1.27]], 0.012, 0.004), 0.002), M.bone));
+      for (const y of [1.18, 1.195, 1.21]) g.add(lash(y, 0.0165, 0.005));
+      g.add(lash(0.42, 0.018, 0.006), lash(-0.04, 0.019, 0.006));
+      g.userData.tip = new THREE.Vector3(0, 1.5, 0);
+      return g;
+    },
+    lanza_cuerno() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.5, 1.28, 0.0165, 0.0125, 0.006), M.wood));
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.34, 10), M.horn); horn.position.y = 1.43; g.add(horn);
+      for (const y of [1.2, 1.215, 1.23, 1.245]) g.add(lash(y, 0.0185, 0.005));
+      g.add(lash(0.42, 0.018, 0.006), lash(-0.04, 0.019, 0.006));
+      g.userData.tip = new THREE.Vector3(0, 1.6, 0);
+      return g;
+    },
+    jabalina() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.35, 1.0, 0.014, 0.011, 0.005), M.wood));
+      g.add(stoneMesh(jitter(extrudePoly([[0, 0.95], [0.028, 1.0], [0.01, 1.12], [0, 1.18], [-0.01, 1.12], [-0.028, 1.0]], 0.01, 0.003), 0.002)));
+      for (const y of [0.93, 0.945]) g.add(lash(y, 0.0145, 0.0045));
+      g.userData.tip = new THREE.Vector3(0, 1.18, 0);
+      return g;
+    },
+    arco() {
+      const g = new THREE.Group();
+      const R = 0.42, A = Math.PI * 0.85;
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(R, 0.013, 7, 28, A), M.wood);
+      arc.rotation.set(0, Math.PI / 2, -A / 2); // arco vertical con la panza hacia delante (-Z)
+      arc.position.z = R; // la panza (centro del arco) queda en el agarre
+      g.add(arc);
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.11, 10), M.leather); g.add(grip);
+      const zc = R - R * Math.cos(A / 2), yc = R * Math.sin(A / 2);
+      const str = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, yc * 2, 5), M.fibre); str.position.set(0, 0, zc); g.add(str);
+      g.userData.tip = new THREE.Vector3(0, yc, 0);
+      return g;
+    },
+    honda() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.06, 0.08, 0.012, 0.011), M.leather));
+      for (const x of [-0.012, 0.012]) { const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.34, 5), M.fibre); cord.position.set(x, 0.24, 0); g.add(cord); }
+      const pouch = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), M.leather); pouch.scale.set(1, 0.6, 0.8); pouch.position.y = 0.42; g.add(pouch);
+      const stone = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), M.stone); stone.position.y = 0.43; g.add(stone);
+      g.userData.tip = new THREE.Vector3(0, 0.43, 0);
+      return g;
+    },
   };
+  // tipo de postura / animación de cada objeto de mano
+  const KIND = {
+    hacha_piedra: 'hacha', pico_piedra: 'hacha', martillo_piedra: 'hacha', maza_piedra: 'hacha', garrote: 'hacha',
+    lanza: 'lanza', lanza_hueso: 'lanza', lanza_cuerno: 'lanza', jabalina: 'lanza',
+    cuchillo_piedra: 'cuchillo', cuchillo_hueso: 'cuchillo', cuchillo_diente: 'cuchillo', punzon_hueso: 'cuchillo',
+    antorcha: 'antorcha', arco: 'arco', honda: 'honda',
+  };
+  const kindOf = (item) => (item && BUILD[item] ? KIND[item] ?? 'puno' : 'puno');
 
   // ------------------------------------------------------------------------------------------ rig
   const root = new THREE.Group();
@@ -275,6 +393,10 @@ export function createViewmodel(ctx) {
     pico_piedra: { pos: [0.25, -0.24, -0.54], rot: [-0.45, 0.4, 0.12] },
     lanza: { pos: [0.2, -0.3, -0.46], rot: [-1.0, 0.1, 0.12] },
     antorcha: { pos: [0.25, -0.26, -0.5], rot: [-0.3, 0.12, 0.2] },
+    hacha: { pos: [0.25, -0.24, -0.54], rot: [-0.45, 0.5, 0.12] },
+    cuchillo: { pos: [0.2, -0.2, -0.46], rot: [-0.9, 0.2, 0.15] },
+    arco: { pos: [0.22, -0.2, -0.55], rot: [0.0, 0.1, 0.0] },
+    honda: { pos: [0.22, -0.26, -0.5], rot: [-0.5, 0.1, 0.2] },
   };
 
   function setTool(item) {
@@ -291,7 +413,7 @@ export function createViewmodel(ctx) {
     if (!key) { fistR.visible = fistL.visible = true; handR = fistR; handL = fistL; }
     else {
       gripR.visible = true; handR = gripR; handL = gripL;
-      if (key === 'lanza') { toolSlot.add(gripL); gripL.position.set(0.0, 0.4, 0); gripL.rotation.set(0, 0, 0); gripL.visible = true; }
+      if (kindOf(key) === 'lanza') { toolSlot.add(gripL); gripL.position.set(0.0, 0.4, 0); gripL.rotation.set(0, 0, 0); gripL.visible = true; }
       else { rigL.add(gripL); gripL.visible = false; }
     }
     armL.visible = handL.visible;
@@ -308,8 +430,8 @@ export function createViewmodel(ctx) {
     state.item = item ?? null; state.equipT = 0; state.pending = state.item;
   });
   ctx.events.on('player:attack', ({ tool }) => {
-    const t = BUILD[tool] ? tool : 'puno';
-    const dur = t === 'puno' ? 0.4 : t === 'lanza' ? 0.55 : 0.55;
+    const t = kindOf(tool);
+    const dur = t === 'puno' ? 0.4 : t === 'cuchillo' ? 0.34 : t === 'arco' ? 0.5 : t === 'honda' ? 0.45 : 0.55;
     state.attack = { t: 0, dur, kind: t, side: state.punchSide };
     if (t === 'puno') state.punchSide ^= 1;
   });
@@ -326,7 +448,7 @@ export function createViewmodel(ctx) {
     const p = clamp(a.t / a.dur, 0, 1);
     out.px = out.py = out.pz = out.rx = out.ry = out.rz = 0;
     const k = a.kind;
-    if (k === 'hacha_piedra' || k === 'pico_piedra') {
+    if (k === 'hacha') {
       const W = 0.24, S = 0.44;
       let u;
       if (p < W) { u = easeOut(p / W); out.rx = 0.95 * u; out.py = 0.1 * u; out.pz = 0.07 * u; out.rz = -0.3 * u; out.px = 0.02 * u; }
@@ -338,6 +460,17 @@ export function createViewmodel(ctx) {
       if (p < W) { u = easeOut(p / W); out.pz = 0.13 * u; out.rx = 0.18 * u; out.py = 0.02 * u; }
       else if (p < S) { u = easeIn((p - W) / (S - W)); out.pz = lerp(0.13, -0.4, u); out.rx = lerp(0.18, -0.12, u); out.py = lerp(0.02, 0.03, u); }
       else { u = smooth((p - S) / (1 - S)); out.pz = lerp(-0.4, 0, u); out.rx = lerp(-0.12, 0, u); out.py = lerp(0.03, 0, u); }
+    } else if (k === 'cuchillo') {
+      // tajo corto y rápido en diagonal
+      const u = p < 0.4 ? easeOut(p / 0.4) : smooth(1 - (p - 0.4) / 0.6);
+      out.px = -0.12 * u; out.py = -0.05 * u; out.pz = -0.2 * u; out.rx = -0.5 * u; out.rz = 0.7 * u; out.ry = -0.2 * u;
+    } else if (k === 'arco') {
+      // suelta la cuerda: pequeño retroceso del arco
+      const u = p < 0.18 ? easeOut(p / 0.18) : smooth(1 - (p - 0.18) / 0.82);
+      out.pz = 0.07 * u; out.rx = 0.12 * u; out.py = 0.012 * u;
+    } else if (k === 'honda') {
+      const u = p < 0.55 ? smooth(p / 0.55) : smooth(1 - (p - 0.55) / 0.45);
+      out.rz = -1.1 * Math.sin(u * Math.PI * 1.2); out.px = 0.06 * u; out.pz = -0.08 * u; out.rx = -0.2 * u;
     } else if (k === 'antorcha') {
       const S = 0.35;
       const u = p < S ? easeOut(p / S) : smooth(1 - (p - S) / (1 - S));
@@ -424,8 +557,8 @@ export function createViewmodel(ctx) {
     const bobX = Math.cos(state.phase) * 0.011 * state.bobAmp, bobY = Math.abs(Math.sin(state.phase)) * -0.016 * state.bobAmp + Math.sin(state.phase * 2) * 0.004 * state.bobAmp;
     const sk = state.sprintK;
 
-    const key = BASE[state.shown] ? state.shown : 'puno';
-    const B = BASE[key];
+    const key = kindOf(state.shown);
+    const B = BASE[state.shown] ?? BASE[key];
     const atk = A ? attackPose({ ...A }) : null;
     const mixR = A && (key !== 'puno' || A.side === 0) ? 1 : 0;
     const common = {
@@ -455,12 +588,12 @@ export function createViewmodel(ctx) {
     if (handL.visible) {
       wrist(handL, wristL);
       elbowL.set(-0.34 + state.swayX * 0.3, -0.72, 0.26);
-      if (key === 'lanza') elbowL.set(-0.2, -0.7, 0.3);
+      if (key === 'lanza') elbowL.set(-0.2, -0.7, 0.3); // 'key' es el tipo de postura
       placeArm(armL, elbowL, wristL);
     }
 
     // antorcha: llama en el mundo y luz propia
-    if (key === 'antorcha' && state.fire && tools.antorcha) {
+    if (state.shown === 'antorcha' && state.fire && tools.antorcha) {
       tmp.copy(tools.antorcha.userData.tip);
       tools.antorcha.localToWorld(tmp);
       torchL.position.copy(tmp);

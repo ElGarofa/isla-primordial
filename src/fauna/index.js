@@ -1,10 +1,15 @@
 // Módulo FAUNA: dinosaurios procedurales con esqueleto, IK de patas, IA y botín. Contrato en docs/ARQUITECTURA.md.
 import * as THREE from 'three';
 import { SPECIES } from './species.js';
+import { createSentidos } from './sentidos.js';
+import { activarHab } from './habilidades.js';
+import { especiesDeEcosistema, ECOSISTEMAS, CATALOGO, POR_ID, resumen } from './catalogo.js';
 import { Creature, prepareLegs } from './creature.js';
 import { makeSkin } from './skin.js';
 import { mulberry32 } from '../core/rng.js';
 import { CONFIG } from '../core/config.js';
+import { ITEMS } from '../core/items.js';
+import * as V from './vinculo.js';
 
 const TAU = Math.PI * 2;
 
@@ -15,9 +20,14 @@ const POBLACION = [
   { id: 'triceratops', grupos: [3, 2], biomes: ['pradera', 'selva'], minH: 4, maxH: 70, slope: 0.1, minSpawn: 120 },
   { id: 'braquiosaurio', grupos: [1, 1, 1], biomes: ['pradera', 'selva'], minH: 5, maxH: 60, slope: 0.07, minSpawn: 160 },
   { id: 'pteranodon', grupos: [1, 1, 1], biomes: null, minH: -100, maxH: 999, slope: 9, minSpawn: 0, vuelo: true },
+  { id: 'tyrannosaurus', grupos: [1, 1], biomes: ['selva', 'pradera'], minH: 4, maxH: 80, slope: 0.1, minSpawn: 230 },
+  { id: 'parasaurolophus', grupos: [4, 3], biomes: ['pradera', 'selva'], minH: 3, maxH: 60, slope: 0.1, minSpawn: 130 },
+  { id: 'stegosaurus', grupos: [2, 2], biomes: ['pradera', 'selva'], minH: 3, maxH: 60, slope: 0.1, minSpawn: 130 },
+  { id: 'ankylosaurus', grupos: [1, 1, 1], biomes: ['pradera'], minH: 3, maxH: 55, slope: 0.1, minSpawn: 110 },
+  { id: 'gallimimus', grupos: [5, 4], biomes: ['pradera', 'playa'], minH: 1.5, maxH: 50, slope: 0.12, minSpawn: 100 },
 ];
 const ACTIVO = 320; // m: más lejos de la cámara las criaturas quedan congeladas
-const DIST = { raptor: [140, 380], compsognatus: [60, 160], triceratops: [200, 520], braquiosaurio: [420, 1000], pteranodon: [700, 900] }; // [animación completa, visibilidad]
+const DIST = { raptor: [140, 380], compsognatus: [60, 160], triceratops: [200, 520], braquiosaurio: [420, 1000], pteranodon: [700, 900], tyrannosaurus: [220, 560], parasaurolophus: [200, 520], stegosaurus: [200, 480], ankylosaurus: [150, 420], gallimimus: [120, 340] }; // [animación completa, visibilidad]
 
 export async function create(ctx) {
   const world = ctx.world;
@@ -31,8 +41,14 @@ export async function create(ctx) {
   let grace = 0;
   let tick = 0;
 
+  // Ecosistema coherente opcional (?eco=hell_creek | morrison | nemegt). Por defecto: isla de ficción con mezcla deliberada.
+  const ecoId = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('eco')) || 'isla_ficcion';
+  const ecoEspecies = especiesDeEcosistema(ecoId);
+  const poblacion = ecoEspecies ? POBLACION.filter((d) => ecoEspecies.includes(d.id)) : POBLACION;
+  const registro = [];
+
   const mgr = {
-    ctx,
+    ctx, list, registro, sentidos: null,
     get grace() { return grace; },
     getBuilt(sp) {
       let b = built.get(sp.id);
@@ -75,14 +91,56 @@ export async function create(ctx) {
     },
     onKilled(c) {
       const pos = c.center.clone();
-      const drops = c.sp.drops.map(([item, n]) => ({ item, cantidad: Math.max(1, Math.round(n * (0.75 + rng() * 0.5))) }));
-      ctx.events.emit('creature:killed', { especie: c.especie, position: pos, drops });
-      for (const d of drops) {
-        const v = new THREE.Vector3((rng() - 0.5) * 3.2, 2.6 + rng() * 1.6, (rng() - 0.5) * 3.2);
-        ctx.physics?.spawnProp?.('loot', pos.clone().setY(Math.max(pos.y, world.getHeight(pos.x, pos.z) + 0.8)), v, { item: d.item, cantidad: d.cantidad, noPickup: 0.9 });
+      ctx.events.emit('creature:killed', { especie: c.especie, position: pos });
+      // El cadáver se aprovecha con "Despiezar" (cuchillo, hacha…): lo obtenido depende de la herramienta, lo devorado y el oficio del jugador.
+      const reg = ctx.player?.registerInteractable;
+      if (reg && ctx.survival?.cosechar) {
+        const nombre = c.nombre.toLowerCase();
+        c.despiezada = false;
+        // el punto de interacción es la esfera de impacto más cercana al jugador (los cuerpos grandes miden varios metros)
+        const punto = new THREE.Vector3(); let rr = 2.4, tCache = -1;
+        const cercana = () => {
+          const t = ctx.time.elapsed; if (t === tCache) return; tCache = t;
+          const pp = ctx.player.position, sy = Math.sin(c.yaw), cy = Math.cos(c.yaw);
+          let bd = 1e9;
+          for (const [hx, hy, hz, hr] of c.sp.hit) {
+            const wx = c.position.x + hx * cy + hz * sy, wy = c.position.y + hy, wz = c.position.z - hx * sy + hz * cy;
+            const d = Math.hypot(wx - pp.x, wz - pp.z) - hr;
+            if (d < bd) { bd = d; punto.set(wx, wy - 0.3, wz); rr = hr + 2.4; }
+          }
+        };
+        c._unreg = reg.call(ctx.player, {
+          id: 'cadaver', get position() { cercana(); return punto; }, get radius() { cercana(); return rr; },
+          label: `Cadáver de ${nombre}`, getPrompt: () => `Despiezar ${nombre}`,
+          onInteract: () => mgr.despiezar(c),
+        });
+      } else {
+        // sin sistema de interacción (pruebas sueltas): suelta el botín de la ficha
+        for (const [item, n] of c.sp.drops) {
+          const v = new THREE.Vector3((rng() - 0.5) * 3.2, 2.6 + rng() * 1.6, (rng() - 0.5) * 3.2);
+          ctx.physics?.spawnProp?.('loot', pos.clone().setY(Math.max(pos.y, world.getHeight(pos.x, pos.z) + 0.8)), v, { item, cantidad: Math.max(1, Math.round(n * (0.75 + rng() * 0.5))), noPickup: 0.9 });
+        }
       }
     },
-    hitPlayer(c, dmg) { ctx.survival?.damage?.(dmg, c.nombre.toLowerCase()); },
+    /** Despieza un cadáver (lo llama la interacción del jugador). */
+    despiezar(c) {
+      if (!c.muerta || c.despiezada) return false;
+      const sv = ctx.survival;
+      const comido = Math.min(1, (c.devorado ?? 0) / 28);
+      const res = sv.cosechar(c.especie, comido);
+      c.despiezada = true; c._unreg?.(); c._unreg = null;
+      c.deathT = Math.max(c.deathT, 100); // el resto del cuerpo se hunde y desaparece pronto
+      ctx.audio?.play?.('golpe_carne', c.position, { v: 0.9 });
+      ctx.fx?.emit?.('sangre', c.center, { cantidad: 8 });
+      const n = res.items.reduce((a, d) => a + d.cantidad, 0);
+      if (!n) ctx.ui?.notify?.('No sacaste nada aprovechable', 'warn');
+      for (const f of res.perdidos) {
+        const nom = ITEMS[f.item]?.nombre ?? f.item;
+        ctx.ui?.notify?.(`Perdiste ${nom}: haría falta ${f.req === 'talar' ? 'un hacha' : f.req === 'corta' ? 'un cuchillo' : f.req}`, 'warn');
+      }
+      return true;
+    },
+    hitPlayer(c, dmg, causa) { ctx.survival?.damage?.(dmg, causa ? `${causa} de ${c.nombre.toLowerCase()}` : c.nombre.toLowerCase(), { armadura: true }); },
     separate(c, dt) {
       for (let i = 0; i < list.length; i++) {
         const o = list[i];
@@ -100,6 +158,7 @@ export async function create(ctx) {
   function spawnAt(especie, x, z, opts = {}) {
     const sp = SPECIES[especie];
     if (!sp) return null;
+    if (opts.herd && typeof opts.herd !== 'object') opts = { ...opts, herd: null };
     const c = new Creature(mgr, sp, nextId++, x, z, opts);
     c.idleLen = 3 + rng() * 4;
     ctx.scene.add(c.group);
@@ -112,6 +171,7 @@ export async function create(ctx) {
     const i = list.indexOf(c);
     if (i >= 0) list.splice(i, 1);
     ctx.scene.remove(c.group);
+    c._unreg?.(); c._unreg = null;
     c.dispose();
   }
 
@@ -122,7 +182,7 @@ export async function create(ctx) {
     pick(origin, dir, maxDist = 4) {
       let best = null;
       for (const c of list) {
-        if (c.muerta || !c.group.visible) continue;
+        if (c.muerta || !c.group.visible || c.jinete) continue; // la montura del jugador no se apunta
         const dxo = c.position.x - origin.x, dzo = c.position.z - origin.z;
         if (dxo * dxo + dzo * dzo > (maxDist + 22) * (maxDist + 22)) continue;
         const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw);
@@ -141,8 +201,18 @@ export async function create(ctx) {
       }
       return best;
     },
-    damage(criatura, cantidad, fuente = 'jugador') { criatura?.damage?.(cantidad, fuente); },
+    damage(criatura, cantidad, fuente = 'jugador', opts = null) { criatura?.damage?.(cantidad, fuente, null, opts); },
     spawnAt,
+    /** Crea una manada real (con centro y miembros) en (x,z). Devuelve los miembros. Útil para pruebas y eventos. */
+    spawnHerd(especie, x, z, n = 3, radio = 6) {
+      const herd = { center: new THREE.Vector3(x, 0, z), members: [] };
+      for (let i = 0; i < n; i++) {
+        const a = (i / Math.max(1, n)) * TAU, r = i === 0 ? 0 : radio * (0.6 + 0.4 * rng());
+        const c = spawnAt(especie, x + Math.cos(a) * r, z + Math.sin(a) * r, { herd, tint: rng() });
+        if (c) herd.members.push(c);
+      }
+      return herd.members;
+    },
     getNear(pos, radius, out = []) {
       out.length = 0;
       const r2 = radius * radius;
@@ -154,7 +224,36 @@ export async function create(ctx) {
     stats() { return { total: list.length, vivas: list.filter((c) => !c.muerta).length, visibles: list.filter((c) => c.group.visible).length }; },
     populate,
     setGrace(t) { grace = t; },
+    despiezar: (c) => mgr.despiezar(c),
+    get sentidos() { return mgr.sentidos; },
+    /** Habilidades y ecología (depuración y pruebas): registro de usos, activación manual y vínculo de domesticación. */
+    registro,
+    usarHabilidad(c, id, info = {}) { return activarHab(c, id, { forzar: true, ...info }); },
+    setVinculo(c, n) { c.vinculo = n; },
+    /** Relación jugador–criatura (ver vinculo.js y docs/DOMESTICACION.md). */
+    vinculo: {
+      info: V.info, accionE: V.accionE, interactuar: V.interactuar, ofrecer: V.ofrecer, colocarManejo: V.colocarManejo, puedeManejo: V.puedeManejo,
+      ordenar: V.ordenar, renombrar: V.renombrar, liberar: V.liberar, equipar: V.equipar, quitarEquipo: V.quitarEquipo, puedeEquipar: V.puedeEquipar,
+      guardar: V.guardar, sacar: V.sacar, capacidadCarga: V.capacidadCarga, cargaActual: V.cargaActual, elegirAlimento: V.elegirAlimento,
+      nivelDe: V.nivelDe, esPropio: V.esPropio, NIVEL_NOMBRE: V.NIVEL_NOMBRE, NIVEL_DESC: V.NIVEL_DESC, ORDEN_NOMBRE: V.ORDEN_NOMBRE,
+    },
+    propios() { return list.filter((c) => !c.muerta && V.esPropio(c)); },
+    /** Criaturas con vínculo que se guardan con la partida (propias y habituadas). */
+    serializar() { return list.filter((c) => !c.muerta && c.rel && (V.esPropio(c) || c.rel.hab >= 1)).map(V.serializar); },
+    restaurar(datos = []) {
+      for (const c of [...list]) if (c.rel && V.esPropio(c)) remove(c);
+      for (const d of datos) {
+        if (!SPECIES[d.e]) continue;
+        const c = spawnAt(d.e, d.x, d.z, { yaw: d.yaw, tint: rng() });
+        if (!c || !c.rel) { if (c) remove(c); continue; }
+        c.hp = Math.min(c.hpMax, d.hp ?? c.hpMax); c.hambre = d.hambre ?? c.hambre;
+        V.restaurarRel(c, d.rel);
+      }
+    },
+    ecosistema: { id: ecoId, ...(ECOSISTEMAS[ecoId] ?? ECOSISTEMAS.isla_ficcion) },
+    catalogo: { filas: CATALOGO, porId: POR_ID, resumen },
   };
+  mgr.sentidos = createSentidos(ctx, mgr);
   ctx.fauna = api;
 
   // ---------------------------------------------------------------------------------------------- población
@@ -192,13 +291,13 @@ export async function create(ctx) {
   }
 
   function populate() {
-    for (const def of POBLACION) for (const n of def.grupos) spawnGroup(def, n);
+    for (const def of poblacion) for (const n of def.grupos) spawnGroup(def, n);
   }
   populate();
   grace = 45;
 
   const target = {};
-  for (const def of POBLACION) target[def.id] = def.grupos.reduce((a, b) => a + b, 0);
+  for (const def of poblacion) target[def.id] = def.grupos.reduce((a, b) => a + b, 0);
 
   // ---------------------------------------------------------------------------------------------- bucle
   const cam = ctx.camera;
@@ -207,6 +306,7 @@ export async function create(ctx) {
     tick++;
     if ((tick & 31) === 0 && ctx.flora?.root && !ctx.flora.root.visible && !list.some((c) => c.frozen)) ctx.flora.root.visible = true; // presets de captura la ocultan
     const playing = ctx.state === 'playing' || ctx.state === 'menu';
+    mgr.sentidos.registrarRastro(ctx.time.elapsed);
     if (ctx.state === 'playing') grace = Math.max(0, grace - dt);
     const cx = cam.position.x, cz = cam.position.z;
 
@@ -229,7 +329,7 @@ export async function create(ctx) {
       if (c.muerta) {
         if (vis || c.deathT < 3) c.update(dt, true);
         else c.deathT += dt;
-        if (c.deathT > 80) remove(c);
+        if (c.deathT > 130) remove(c);
         continue;
       }
       if (!playing && ctx.state !== 'dead') continue;
@@ -250,8 +350,8 @@ export async function create(ctx) {
     respawnT -= dt;
     if (respawnT <= 0 && ctx.state === 'playing') {
       respawnT = 18;
-      for (const def of POBLACION) {
-        const vivos = list.filter((c) => c.especie === def.id && !c.muerta).length;
+      for (const def of poblacion) {
+        const vivos = list.filter((c) => c.especie === def.id && !c.muerta && !V.esPropio(c)).length; // los animales propios no cuentan como población salvaje
         if (vivos < target[def.id] * 0.7) { spawnGroup(def, Math.min(def.grupos[0], target[def.id] - vivos)); break; }
       }
     }

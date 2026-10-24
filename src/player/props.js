@@ -43,6 +43,7 @@ export function createProps(ctx) {
   return {
     spawnProp,
     get count() { return props.length; },
+    get list() { return props; },
     update(dt) {
       if (dt <= 0) return;
       const world = ctx.world, pp = ctx.player?.position;
@@ -52,8 +53,9 @@ export function createProps(ctx) {
         if (p.sleep > 1.2) {
           // el botín se recoge al acercarse (el jugador)
           if (p.kind === 'loot' && p.data && p.life > (p.data.noPickup ?? 0) && pp && p.mesh.position.distanceToSquared(tmp.set(pp.x, pp.y + 0.8, pp.z)) < 2.4) {
-            const left = ctx.survival?.inventory?.add?.(p.data.item, p.data.cantidad) ?? 0;
+            const left = ctx.survival?.inventory?.add?.(p.data.item, p.data.cantidad, p.data.extra ?? null) ?? 0;
             if (left === 0) { removeAt(i); continue; }
+            p.data.cantidad = left; // se llevó parte: el resto queda en el suelo
           }
           if (p.life > 90) removeAt(i);
           continue;

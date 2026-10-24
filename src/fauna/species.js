@@ -1,42 +1,11 @@
 // Definición de especies: esqueleto, malla con piel, patas para IK, esferas de impacto, IA y botín.
 import * as THREE from 'three';
 import { SkinBuilder, makeSkeleton, PART, V } from './builder.js';
+import { colorizer } from './color.js';
+import { buildRex, buildParasaur, buildStego, buildAnkylo, buildGallimimus } from './modelos.js';
+import { DETALLE, POR_ID, marcarImplementadas } from './catalogo.js';
 
-const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const mix = (a, b, t) => a + (b - a) * t;
-
-/** Calcula el color de vértice: dorso/vientre, rayas, sombreado ambiental pintado y colores de partes. */
-function colorizer(pal) {
-  return (x, y, z, nx, ny, nz, part, out) => {
-    let r, g, b;
-    if (part === PART.ojo) { [r, g, b] = pal.ojo ?? [0.95, 0.75, 0.1]; }
-    else if (part === PART.diente) { [r, g, b] = [0.88, 0.84, 0.72]; }
-    else if (part === PART.garra) { [r, g, b] = pal.garra ?? [0.07, 0.06, 0.05]; }
-    else if (part === PART.cuerno) { const k = sstep(0, 1, Math.hypot(x * 0.0 + 0, 0)); void k; [r, g, b] = pal.cuerno ?? [0.78, 0.72, 0.58]; const dark = pal.cuernoPunta ? 0 : 0; void dark; }
-    else if (part === PART.gola) {
-      const rad = Math.min(1, Math.hypot(x, y - (pal.golaY ?? 2.2)) / (pal.golaR ?? 0.85));
-      const c0 = pal.gola0, c1 = pal.gola1;
-      const t = sstep(0.35, 0.95, rad);
-      r = mix(c0[0], c1[0], t); g = mix(c0[1], c1[1], t); b = mix(c0[2], c1[2], t);
-      const sp = 0.5 + 0.5 * Math.sin(Math.atan2(y - (pal.golaY ?? 2.2), x) * 14);
-      const m = 1 - 0.28 * sp * sstep(0.5, 0.9, rad); r *= m; g *= m; b *= m;
-    } else {
-      const back = sstep(-0.35, 0.55, ny);
-      r = mix(pal.vientre[0], pal.dorso[0], back); g = mix(pal.vientre[1], pal.dorso[1], back); b = mix(pal.vientre[2], pal.dorso[2], back);
-      if (pal.raya) {
-        const w = pal.raya;
-        const s = Math.sin(z * w.freq + Math.sin(y * w.warp + x * 3) * 0.9);
-        const m = sstep(w.th, w.th + 0.22, s) * sstep(-0.1, 0.45, ny) * (w.amp ?? 0.7);
-        r = mix(r, pal.raya.color[0], m); g = mix(g, pal.raya.color[1], m); b = mix(b, pal.raya.color[2], m);
-      }
-      if (pal.manchas) { const m = sstep(0.62, 0.8, Math.sin(x * 5.1 + z * 2.3) * Math.sin(y * 4.3 - z * 3.1) * 0.5 + 0.5) * sstep(0, 0.5, ny) * 0.5; r = mix(r, pal.manchas[0], m); g = mix(g, pal.manchas[1], m); b = mix(b, pal.manchas[2], m); }
-      // sombreado ambiental pintado: bajos y bajo el vientre más oscuros
-      const ao = (0.5 + 0.5 * sstep(-1, 0.1, ny)) * (0.78 + 0.22 * sstep(0, (pal.aoY ?? 0.5), y));
-      r *= ao; g *= ao; b *= ao;
-    }
-    out[0] = r; out[1] = g; out[2] = b;
-  };
-}
+export { colorizer };
 
 // ---------------------------------------------------------------------------------------------- TERÓPODOS (raptor / compsognatus)
 function buildTheropod(s, o = {}) {
@@ -233,7 +202,7 @@ export const SPECIES = {
     drops: [['carne_cruda', 1]], rugido: 0.4,
   },
   triceratops: {
-    id: 'triceratops', nombre: 'Triceratops', skin: 'tri', uvK: 3.2, tono: 0.95, scale: 1, tipo: 'herbivoro', vidaMax: 320,
+    id: 'triceratops', nombre: 'Triceratops', anim: 'tricera', skin: 'tri', uvK: 3.2, tono: 0.95, scale: 1, tipo: 'herbivoro', vidaMax: 320,
     pal: { dorso: [0.4, 0.37, 0.27], vientre: [0.66, 0.6, 0.46], manchas: [0.26, 0.24, 0.17], gola0: [0.5, 0.26, 0.14], gola1: [0.32, 0.27, 0.2], golaY: 2.2, golaR: 0.86, aoY: 1.0, ojo: [0.6, 0.35, 0.08], cuerno: [0.84, 0.78, 0.62] },
     build() { return buildTricera({ pal: this.pal }); },
     roughness: 0.86, hips: 1.75, hit: [[0, 1.9, 0, 1.0], [0, 1.9, 1.2, 0.85], [0, 1.8, 2.5, 0.6], [0, 2.2, 1.95, 0.8], [0, 1.5, -2.2, 0.55]],
@@ -242,7 +211,7 @@ export const SPECIES = {
     drops: [['carne_cruda', 6], ['cuero', 4], ['hueso', 3]], rugido: 0.5,
   },
   braquiosaurio: {
-    id: 'braquiosaurio', nombre: 'Braquiosaurio', skin: 'brach', uvK: 5.5, tono: 1.05, scale: 1, tipo: 'herbivoro', vidaMax: 900,
+    id: 'braquiosaurio', nombre: 'Braquiosaurio', anim: 'braquio', skin: 'brach', uvK: 5.5, tono: 1.05, scale: 1, tipo: 'herbivoro', vidaMax: 900,
     pal: { dorso: [0.46, 0.46, 0.33], vientre: [0.68, 0.64, 0.5], manchas: [0.3, 0.32, 0.22], aoY: 3.2, ojo: [0.7, 0.45, 0.08] },
     build() { return buildBrachio({ pal: this.pal }); },
     roughness: 0.9, hips: 4.6, hit: [[0, 4.9, 0, 2.0], [0, 5.0, 1.9, 1.7], [0, 6.5, 3.2, 0.9], [0, 9.5, 4.1, 0.6], [0, 12.3, 5.1, 0.5], [0, 3.8, -5.0, 0.9], [0, 3.2, -8.0, 0.5]],
@@ -251,7 +220,7 @@ export const SPECIES = {
     drops: [['carne_cruda', 10], ['cuero', 6], ['hueso', 5]], rugido: 0.6,
   },
   pteranodon: {
-    id: 'pteranodon', nombre: 'Pteranodon', skin: 'ptera', uvK: 1.5, tono: 1.0, scale: 1, tipo: 'volador', vidaMax: 30,
+    id: 'pteranodon', nombre: 'Pteranodon', anim: 'ptera', skin: 'ptera', uvK: 1.5, tono: 1.0, scale: 1, tipo: 'volador', vidaMax: 30,
     pal: { dorso: [0.42, 0.32, 0.22], vientre: [0.78, 0.7, 0.55], aoY: 0.1, ojo: [0.9, 0.6, 0.1] },
     build() { return buildPtera({ pal: this.pal }); },
     roughness: 0.8, hips: 0, hit: [[0, 0.1, 0.1, 0.4], [0, 0.3, 1.0, 0.25], [1.5, 0.12, 0, 0.6], [-1.5, 0.12, 0, 0.6]],
@@ -259,6 +228,59 @@ export const SPECIES = {
     ai: { vuelo: true },
     drops: [['carne_cruda', 2], ['cuero', 2], ['hueso', 1]], rugido: 0.3,
   },
+  tyrannosaurus: {
+    id: 'tyrannosaurus', nombre: 'Tyrannosaurus', skin: 'rex', uvK: 3.4, tono: 0.95, scale: 1, tipo: 'depredador', vidaMax: 600,
+    pal: { dorso: [0.33, 0.27, 0.18], vientre: [0.62, 0.55, 0.4], raya: { freq: 6, warp: 4, th: 0.6, color: [0.14, 0.1, 0.07], amp: 0.55 }, aoY: 1.6, ojo: [0.95, 0.7, 0.1] },
+    build() { return buildRex({ pal: this.pal }); },
+    roughness: 0.82, hips: 3.15, hit: [[0, 3.3, 0.2, 1.25], [0, 3.5, 1.7, 1.0], [0, 3.9, 2.6, 0.75], [0, 4.1, 4.2, 0.6], [0, 3.1, -1.9, 0.85], [0.58, 1.6, 0.6, 0.55], [-0.58, 1.6, 0.6, 0.55], [0, 2.8, -3.6, 0.55]],
+    vel: { walk: 2.0, run: 7.0 }, cycle: { walk: 4.2, run: 7.0 }, stance: 0.6, step: 0.35, radius: 1.7,
+    ai: { ataque: 3.8, dano: 38, cd: 2.8, huye: 0.15 }, rugido: 0.5,
+  },
+  parasaurolophus: {
+    id: 'parasaurolophus', nombre: 'Parasaurolophus', skin: 'parasaur', uvK: 4, tono: 1.0, scale: 1, tipo: 'herbivoro', vidaMax: 260, anim: 'hadrosaurio',
+    pal: { dorso: [0.4, 0.38, 0.22], vientre: [0.7, 0.64, 0.45], raya: { freq: 5, warp: 3, th: 0.55, color: [0.2, 0.16, 0.1], amp: 0.6 }, cresta: [0.6, 0.3, 0.16], cresta1: [0.38, 0.2, 0.12], aoY: 1.4, ojo: [0.8, 0.55, 0.1] },
+    build() { return buildParasaur({ pal: this.pal }); },
+    roughness: 0.8, hips: 2.15, hit: [[0, 2.2, -0.4, 1.1], [0, 2.2, 0.9, 1.05], [0, 2.5, 2.0, 0.7], [0, 3.0, 3.2, 0.5], [0, 3.4, 3.1, 0.4], [0, 1.9, -2.5, 0.65], [0, 1.7, -4.5, 0.4]],
+    vel: { walk: 1.6, run: 6.6 }, cycle: { walk: 3.0, run: 5.8 }, stance: 0.62, step: 0.24, radius: 1.6,
+    ai: { huye: 1, huyeDist: 38, manada: true }, rugido: 0.5,
+  },
+  stegosaurus: {
+    id: 'stegosaurus', nombre: 'Stegosaurus', skin: 'stego', uvK: 4.5, tono: 0.95, scale: 1, tipo: 'herbivoro', vidaMax: 380, anim: 'estegosaurio',
+    pal: { dorso: [0.34, 0.36, 0.2], vientre: [0.58, 0.55, 0.4], manchas: [0.2, 0.24, 0.12], placa0: [0.34, 0.24, 0.16], placa1: [0.64, 0.36, 0.16], placaY0: 2.2, placaH: 1.3, cuerno: [0.75, 0.68, 0.5], aoY: 1.2, ojo: [0.7, 0.45, 0.08] },
+    build() { return buildStego({ pal: this.pal }); },
+    roughness: 0.86, hips: 2.1, hit: [[0, 2.1, -0.3, 1.0], [0, 2.0, 0.9, 0.95], [0, 1.4, 2.4, 0.55], [0, 1.0, 3.5, 0.35], [0, 1.9, -1.9, 0.7], [0, 1.4, -3.8, 0.5], [0, 1.4, -4.8, 0.4]],
+    vel: { walk: 1.2, run: 3.8 }, cycle: { walk: 2.6, run: 4.2 }, stance: 0.66, step: 0.2, radius: 1.6,
+    ai: { defiende: true, ataque: 4, dano: 0, cd: 3, huye: 0 }, rugido: 0.5,
+  },
+  ankylosaurus: {
+    id: 'ankylosaurus', nombre: 'Ankylosaurus', skin: 'ankylo', uvK: 3.4, tono: 0.92, scale: 1, tipo: 'herbivoro', vidaMax: 420, anim: 'anquilosaurio',
+    pal: { dorso: [0.34, 0.28, 0.2], vientre: [0.52, 0.45, 0.34], manchas: [0.22, 0.18, 0.12], cuerno: [0.62, 0.52, 0.36], aoY: 0.9, ojo: [0.7, 0.45, 0.08] },
+    build() { return buildAnkylo({ pal: this.pal }); },
+    roughness: 0.88, hips: 1.2, hit: [[0, 1.2, -0.3, 1.1], [0, 1.2, 0.9, 1.05], [0, 1.0, 2.2, 0.55], [0, 0.9, 2.9, 0.35], [0, 1.1, -2.0, 0.6], [0, 0.85, -4.9, 0.5]],
+    vel: { walk: 1.0, run: 3.4 }, cycle: { walk: 1.6, run: 3.0 }, stance: 0.68, step: 0.12, radius: 1.5,
+    ai: { defiende: true, ataque: 4, dano: 0, cd: 4, huye: 0 }, rugido: 0.5,
+  },
+  gallimimus: {
+    id: 'gallimimus', nombre: 'Gallimimus', skin: 'gall', uvK: 1.5, tono: 1.0, scale: 0.85, tipo: 'presa', vidaMax: 70,
+    pal: { dorso: [0.5, 0.38, 0.22], vientre: [0.82, 0.74, 0.55], raya: { freq: 9, warp: 3, th: 0.62, color: [0.2, 0.14, 0.08], amp: 0.5 }, aoY: 0.8, ojo: [0.9, 0.65, 0.1] },
+    build() { return buildGallimimus({ pal: this.pal }); },
+    roughness: 0.75, hips: 1.75, hit: [[0, 1.8, 0.2, 0.5], [0, 1.9, 0.95, 0.38], [0, 2.5, 1.6, 0.22], [0, 3.1, 2.1, 0.2], [0, 1.7, -1.0, 0.28], [0.2, 0.9, 0.3, 0.3], [-0.2, 0.9, 0.3, 0.3]],
+    vel: { walk: 2.2, run: 12 }, cycle: { walk: 2.4, run: 4.7 }, stance: 0.55, step: 0.2, radius: 0.6,
+    ai: { huye: 1, huyeDist: 34, manada: true }, rugido: 0.4,
+  },
 };
+
+// Los datos biológicos y de comportamiento salen del catálogo (única fuente de verdad); aquí se convierten en parámetros de IA.
+for (const sp of Object.values(SPECIES)) {
+  const det = DETALLE[sp.id];
+  if (!det) throw new Error(`Falta DETALLE en catalogo.js para ${sp.id}`);
+  sp.cat = POR_ID[sp.id] ?? null; sp.detalle = det;
+  sp.sentidos = det.sentidos; sp.energia = det.energia; sp.hambre = det.hambre; sp.peligro = det.peligro; sp.masa = sp.cat?.masa ?? 100;
+  sp.vigia = !!det.vigia; sp.habilidades = det.habilidades; sp.habParams = det.habParams ?? {};
+  sp.ai = { ...sp.ai, caza: det.caza, teme: det.teme, coordinada: !!det.coordinada, vista: det.sentidos.vista };
+  sp.drops = det.cosecha;
+  sp.doma = det.doma ?? null; sp.montura = det.montura || null;
+}
 export const SPECIES_IDS = Object.keys(SPECIES);
+marcarImplementadas(SPECIES_IDS);
 export { THREE };

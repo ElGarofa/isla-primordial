@@ -19,6 +19,7 @@ export const shots = {
       hour: hour ?? 14.5,
       camera: { agl: true, pos: [p.x, ctx.config.player.eyeHeight, p.z - 4], look: [p.x * 0.6, 3, p.z * 0.4] },
       setup: () => {
+        ctx.debug.hideViewmodel = false;
         const vm = ctx.viewmodel;
         vm.equipNow(item);
         if (atk) vm.state.attack = { t: atk - 12 / 30, dur: 0.55, kind: item ?? 'puno', side: 0 };

@@ -144,6 +144,31 @@ export const RECIPES = {
     K.burst(out, t + 0.02, { type: 'white', f: 600, q: 4, a: 0.01, d: 0.06, peak: 0.12 * v });
     return 0.3;
   },
+  arco_disparo(K, out, t, o) {
+    const v = o.v ?? 1, p = o.p ?? rnd(0.95, 1.06);
+    K.burst(out, t, { type: 'pink', f: 900 * p, q: 0.9, a: 0.001, d: 0.05, peak: 0.32 * v });
+    const os = K.osc('triangle', 260 * p, t, 0.35), g = K.gain(0);
+    K.glide(os, t, [[0, 260 * p], [0.04, 190 * p], [0.3, 172 * p]]); K.env(g.gain, t, 0.45 * v, 0.002, 0.28); K.chain(os, g, out);
+    K.mode(out, 420 * p, t, 0.16 * v, 0.12);
+    K.burst(out, t + 0.03, { type: 'white', f: 3200, q: 1.2, a: 0.01, d: 0.18, peak: 0.09 * v });
+    return 0.42;
+  },
+  honda_disparo(K, out, t, o) {
+    const v = o.v ?? 1;
+    const n = K.noise('pink', t, 0.3), f = K.filt('bandpass', 500, 1.5), g = K.gain(0);
+    f.frequency.setValueAtTime(500, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.32 * v, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26); K.chain(n, f, g, out);
+    K.burst(out, t + 0.16, { type: 'white', f: 3000, q: 0.8, ft: 'highpass', a: 0.0008, d: 0.03, peak: 0.36 * v });
+    return 0.32;
+  },
+  rotura(K, out, t, o) {
+    const v = o.v ?? 1, p = o.p ?? rnd(0.9, 1.1);
+    K.burst(out, t, { type: 'white', f: 3000 * p, q: 0.8, ft: 'highpass', a: 0.0006, d: 0.025, peak: 0.55 * v });
+    K.mode(out, 640 * p, t, 0.26 * v, 0.08); K.mode(out, 1180 * p, t + 0.01, 0.18 * v, 0.06);
+    for (let i = 0; i < 4; i++) K.burst(out, t + rnd(0.03, 0.16), { type: 'white', f: rnd(1200, 4200), q: 2, a: 0.001, d: 0.015, peak: rnd(0.15, 0.3) * v });
+    K.burst(out, t + 0.02, { type: 'brown', f: 300, ft: 'lowpass', a: 0.003, d: 0.12, peak: 0.36 * v });
+    return 0.36;
+  },
   talar_caida(K, out, t, o) {
     const v = o.v ?? 1;
     // crujido de fibras
@@ -277,6 +302,68 @@ export const RECIPES = {
     return D + 0.1;
   },
 
+  rugido_tyrannosaurus(K, out, t, o) {
+    const v = o.v ?? 1, D = 2.3, p = o.p ?? rnd(0.94, 1.06);
+    const os = K.osc('sawtooth', 70, t, D), os2 = K.osc('square', 35, t, D), am = K.osc('sine', 26, t, D), ag = K.gain(0.3), g = K.gain(0), sh = K.shaper(10);
+    K.glide(os, t, [[0, 62 * p], [0.25, 120 * p], [0.9, 95 * p], [1.7, 70 * p], [D, 42 * p]]); K.glide(os2, t, [[0, 31 * p], [0.25, 60 * p], [0.9, 47 * p], [1.7, 35 * p], [D, 21 * p]]);
+    const f1 = K.filt('bandpass', 180, 2.5), f2 = K.filt('bandpass', 520, 3), f3 = K.filt('bandpass', 1400, 4), mix = K.gain(1);
+    os.connect(sh); sh.connect(f1); sh.connect(f2); sh.connect(f3); f1.connect(mix); f2.connect(mix); f3.connect(mix); os2.connect(mix);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.75 * v, t + 0.22); g.gain.linearRampToValueAtTime(0.62 * v, t + 1.4); g.gain.exponentialRampToValueAtTime(0.0001, t + D);
+    am.connect(ag); ag.connect(g.gain); mix.connect(g); g.connect(out);
+    K.burst(out, t, { type: 'brown', f: 900, q: 0.7, ft: 'bandpass', a: 0.12, d: D - 0.4, peak: 0.32 * v });
+    K.burst(out, t + 0.05, { type: 'white', f: 2600, q: 0.8, ft: 'highpass', a: 0.1, d: D - 0.7, peak: 0.06 * v });
+    return D + 0.2;
+  },
+  rugido_stegosaurus(K, out, t, o) {
+    const v = o.v ?? 1, D = 1.1, p = o.p ?? rnd(0.94, 1.06);
+    const os = K.osc('triangle', 95, t, D), os2 = K.osc('sawtooth', 48, t, D), vib = K.osc('sine', 4.2, t, D), vg = K.gain(7), g = K.gain(0), f1 = K.filt('bandpass', 300, 3), f2 = K.filt('bandpass', 720, 4), mix = K.gain(1);
+    K.glide(os, t, [[0, 85 * p], [0.3, 140 * p], [0.7, 110 * p], [D, 72 * p]]); K.glide(os2, t, [[0, 42 * p], [0.3, 70 * p], [0.7, 55 * p], [D, 36 * p]]);
+    vib.connect(vg); vg.connect(os.frequency); os.connect(f1); os.connect(f2); f1.connect(mix); f2.connect(mix); os2.connect(mix);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.6 * v, t + 0.15); g.gain.linearRampToValueAtTime(0.45 * v, t + 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + D); mix.connect(g); g.connect(out);
+    K.burst(out, t, { type: 'brown', f: 380, ft: 'lowpass', a: 0.1, d: D - 0.3, peak: 0.22 * v });
+    return D + 0.1;
+  },
+  rugido_ankylosaurus(K, out, t, o) {
+    const v = o.v ?? 1, D = 0.8, p = o.p ?? rnd(0.94, 1.06);
+    const os = K.osc('sawtooth', 120, t, D), os2 = K.osc('square', 60, t, D), g = K.gain(0), sh = K.shaper(8), f1 = K.filt('bandpass', 260, 3.5), f2 = K.filt('bandpass', 640, 4), mix = K.gain(1);
+    K.glide(os, t, [[0, 100 * p], [0.12, 170 * p], [0.45, 130 * p], [D, 80 * p]]); K.glide(os2, t, [[0, 50 * p], [0.12, 85 * p], [0.45, 65 * p], [D, 40 * p]]);
+    os.connect(sh); sh.connect(f1); sh.connect(f2); f1.connect(mix); f2.connect(mix); os2.connect(mix);
+    K.env(g.gain, t, 0.62 * v, 0.06, D - 0.08); mix.connect(g); g.connect(out);
+    K.burst(out, t, { type: 'pink', f: 900, q: 0.8, ft: 'bandpass', a: 0.02, d: 0.45, peak: 0.24 * v });
+    return D + 0.1;
+  },
+  rugido_gallimimus(K, out, t, o) {
+    const v = o.v ?? 1, p = o.p ?? rnd(0.92, 1.1);
+    for (let i = 0; i < 2; i++) {
+      const tt = t + i * 0.32, d = i === 0 ? 0.3 : 0.4;
+      const os = K.osc('sawtooth', 900, tt, d), vib = K.osc('sine', 22, tt, d), vg = K.gain(60), g = K.gain(0), f1 = K.filt('bandpass', 1500, 5), f2 = K.filt('bandpass', 2700, 6), mix = K.gain(1);
+      K.glide(os, tt, i === 0 ? [[0, 820 * p], [0.12, 1350 * p], [d, 1000 * p]] : [[0, 1000 * p], [0.18, 1550 * p], [d, 820 * p]]);
+      vib.connect(vg); vg.connect(os.frequency); os.connect(f1); os.connect(f2); f1.connect(mix); f2.connect(mix);
+      K.env(g.gain, tt, 0.34 * v, 0.02, d - 0.03); mix.connect(g); g.connect(out);
+    }
+    return 0.9;
+  },
+  llamada_parasaurolophus(K, out, t, o) {
+    // llamada resonante de cresta hueca: tubo largo → fundamental baja con formantes nasales muy resonantes
+    const v = o.v ?? 1, D = 2.0, p = o.p ?? rnd(0.95, 1.05);
+    const os = K.osc('sawtooth', 190, t, D), os2 = K.osc('triangle', 95, t, D), vib = K.osc('sine', 5, t, D), vg = K.gain(5), g = K.gain(0), sh = K.shaper(4);
+    const f1 = K.filt('bandpass', 520, 9), f2 = K.filt('bandpass', 1150, 7), f3 = K.filt('bandpass', 2300, 5), mix = K.gain(1);
+    const pts = [[0, 150 * p], [0.35, 235 * p], [1.1, 215 * p], [1.6, 245 * p], [D, 135 * p]];
+    K.glide(os, t, pts); K.glide(os2, t, pts.map(([a, f]) => [a, f * 0.5]));
+    vib.connect(vg); vg.connect(os.frequency);
+    os.connect(sh); sh.connect(f1); sh.connect(f2); sh.connect(f3); f1.connect(mix); f2.connect(mix); f3.connect(mix); os2.connect(mix);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.62 * v, t + 0.12); g.gain.linearRampToValueAtTime(0.5 * v, t + 1.3); g.gain.exponentialRampToValueAtTime(0.0001, t + D); mix.connect(g); g.connect(out);
+    K.burst(out, t, { type: 'pink', f: 1100, q: 1.2, ft: 'bandpass', a: 0.05, d: D - 0.5, peak: 0.07 * v });
+    return D + 0.2;
+  },
+  rugido_parasaurolophus(K, out, t, o) {
+    const v = o.v ?? 1, D = 0.7, p = o.p ?? rnd(0.95, 1.05);
+    const os = K.osc('sawtooth', 220, t, D), g = K.gain(0), f1 = K.filt('bandpass', 600, 7), f2 = K.filt('bandpass', 1300, 6), mix = K.gain(1), sh = K.shaper(5);
+    K.glide(os, t, [[0, 260 * p], [0.15, 330 * p], [D, 190 * p]]);
+    os.connect(sh); sh.connect(f1); sh.connect(f2); f1.connect(mix); f2.connect(mix); K.env(g.gain, t, 0.5 * v, 0.03, D - 0.05); mix.connect(g); g.connect(out);
+    return D + 0.1;
+  },
+
   // ---------------------------------------------------------------- ambiente puntual
   pajaro(K, out, t, o) {
     const v = o.v ?? 1, n = 2 + ((Math.random() * 4) | 0), base = o.base ?? rnd(2200, 4200);
@@ -325,6 +412,6 @@ export function drum(K, out, t, v = 0.5, f = 62) {
 }
 
 /** Atenuación por receta para que ninguna sature antes del compresor. */
-export const TRIM = { golpe_madera: 0.7, golpe_roca: 0.72, talar_caida: 0.7, muerte: 0.62, trueno: 0.55, rugido_triceratops: 0.36, rugido_braquiosaurio: 0.25, rugido_raptor: 0.9, aterrizaje: 0.9 };
+export const TRIM = { golpe_madera: 0.7, golpe_roca: 0.72, talar_caida: 0.7, muerte: 0.62, trueno: 0.55, rugido_triceratops: 0.36, rugido_braquiosaurio: 0.25, rugido_raptor: 0.9, rugido_tyrannosaurus: 0.3, rugido_stegosaurus: 0.42, rugido_ankylosaurus: 0.42, rugido_gallimimus: 0.7, llamada_parasaurolophus: 0.4, rugido_parasaurolophus: 0.5, aterrizaje: 0.9 };
 
 export { rnd, pick };

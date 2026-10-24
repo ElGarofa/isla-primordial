@@ -8,6 +8,11 @@ const PRESETS = {
   comps: { cell: 9, round: 0.6, bump: 1.4, mottle: 0.12, wrinkle: 0.25, base: 0.88 },
   tri: { cell: 28, round: 0.7, bump: 2.6, mottle: 0.2, wrinkle: 0.6, base: 0.84 },
   brach: { cell: 40, round: 0.78, bump: 2.6, mottle: 0.12, wrinkle: 0.9, base: 0.84 },
+  rex: { cell: 18, round: 0.64, bump: 2.0, mottle: 0.14, wrinkle: 0.5, base: 0.84 },
+  parasaur: { cell: 22, round: 0.6, bump: 1.8, mottle: 0.12, wrinkle: 0.45, base: 0.86 },
+  stego: { cell: 26, round: 0.68, bump: 2.4, mottle: 0.18, wrinkle: 0.6, base: 0.84 },
+  ankylo: { cell: 30, round: 0.7, bump: 2.6, mottle: 0.2, wrinkle: 0.7, base: 0.82 },
+  gall: { cell: 10, round: 0.55, bump: 1.2, mottle: 0.1, wrinkle: 0.25, base: 0.88 },
   ptera: { cell: 20, round: 0.5, bump: 1.4, mottle: 0.1, wrinkle: 0.5, base: 0.88 },
 };
 

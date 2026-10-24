@@ -3,6 +3,8 @@ import { makeNoise, makeKit, RECIPES, TRIM, rnd } from './synth.js';
 import { Music } from './music.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const BIG = new Set(['rugido_braquiosaurio', 'rugido_tyrannosaurus', 'llamada_parasaurolophus']);
+const VOZ = (n) => n.startsWith('rugido') || n.startsWith('llamada');
 const REVERB = { trueno: 0.75, talar_caida: 0.35, muerte: 0.5, buho: 0.5, pajaro: 0.35, gaviota: 0.25, rana: 0.2 };
 
 export async function create(ctx) {
@@ -55,12 +57,12 @@ export async function create(ctx) {
     if (!ensure() || ac.state !== 'running' || ctx.state === 'loading') return false;
     const rec = RECIPES[nombre];
     if (!rec || voices > 36) return false;
-    const big = nombre === 'rugido_braquiosaurio';
+    const big = BIG.has(nombre);
     const bus = ac.createGain(); bus.gain.value = (opts.volumen ?? 1) * (TRIM[nombre] ?? 1);
     let node = bus, target = sfx;
-    if (position) { const pn = spatial(position, { ref: big ? 30 : nombre.startsWith('rugido') ? 10 : nombre === 'talar_caida' ? 12 : 4, rolloff: big ? 0.8 : 1.2, hrtf: nombre.startsWith('rugido') || nombre === 'golpe_madera' }); bus.connect(pn); target = pn; } else bus.connect(sfx);
+    if (position) { const pn = spatial(position, { ref: big ? 30 : VOZ(nombre) ? 10 : nombre === 'talar_caida' ? 12 : 4, rolloff: big ? 0.8 : 1.2, hrtf: VOZ(nombre) || nombre === 'golpe_madera' }); bus.connect(pn); target = pn; } else bus.connect(sfx);
     void node; void target;
-    const wet = REVERB[nombre] ?? (nombre.startsWith('rugido') ? 0.35 : 0.1);
+    const wet = REVERB[nombre] ?? (VOZ(nombre) ? 0.35 : 0.1);
     const send = ac.createGain(); send.gain.value = wet * (ambience?.reverbBoost ?? 1); bus.connect(send); send.connect(reverbIn);
     const dur = rec(K, bus, ac.currentTime + 0.01, { v: opts.v ?? 1, p: opts.tono, ...opts });
     voices++; setTimeout(() => { voices--; try { bus.disconnect(); send.disconnect(); } catch { /* ya desconectado */ } }, (dur + 0.4) * 1000);
@@ -163,7 +165,7 @@ export async function create(ctx) {
   });
   ctx.events.on('flora:felled', ({ position }) => play('talar_caida', position ?? null, { v: 1 }));
   ctx.events.on('creature:hit', ({ position }) => play('golpe_carne', position ?? null));
-  ctx.events.on('creature:roar', ({ especie, position }) => play(`rugido_${especie}`, position ?? null));
+  ctx.events.on('creature:roar', ({ especie, position, llamada }) => { const n = llamada && RECIPES[`llamada_${especie}`] ? `llamada_${especie}` : `rugido_${especie}`; play(n, position ?? null); });
   ctx.events.on('creature:killed', ({ especie, position }) => { play('golpe_carne', position ?? null, { v: 1.2 }); if (RECIPES[`rugido_${especie}`] && Math.random() < 0.6) play(`rugido_${especie}`, position ?? null, { tono: 0.75, v: 0.8 }); });
   ctx.events.on('weather:lightning', ({ intensity, position }) => {
     const cam = ctx.camera.position, d = position ? Math.hypot(position.x - cam.x, position.z - cam.z) : 600;
