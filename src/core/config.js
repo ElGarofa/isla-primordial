@@ -3,9 +3,10 @@ export const CONFIG = {
   nombre: 'Isla Primordial',
   seed: 1337,
   world: {
-    size: 1536, // diámetro de la isla jugable (m); el mar se extiende más allá
+    size: 12288, // lado del cuadrado de mundo (m): 151 km², de los que ≈ 80 km² son tierra; el mar abierto se extiende más allá
+    macro: 768, // celdas por lado de la rejilla macro (16 m)
     seaLevel: 0,
-    maxHeight: 190,
+    maxHeight: 460,
   },
   time: {
     dayLengthSec: 1500, // un día completo dura 25 minutos reales
@@ -28,8 +29,8 @@ export const CONFIG = {
   },
   render: {
     fov: 70,
-    near: 0.1,
-    far: 3500,
+    near: 0.15,
+    far: 9000, // alcance de dibujo en el suelo; la niebla del horizonte funde todo entre el 72 % y el 96 % de este valor
     shadowMapSize: 4096,
     maxPixelRatio: 2,
   },

@@ -1,16 +1,27 @@
 // Módulo AUDIO: motor WebAudio con espacialización 3D, ambiente por bioma/hora/clima, efectos y música, todo sintetizado.
 import { makeNoise, makeKit, RECIPES, TRIM, rnd } from './synth.js';
 import { Music } from './music.js';
+import { MusicaTitulo } from './titulo.js';
+
+const base = () => (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || './';
+/** Pista de portada aportada por el usuario (ver titulo.js). Pasa `?titulo=0` en la URL para desactivarla. */
+const TITULO_URL = 'audio/temita.mp3', TITULO_GAIN = 0.9, TITULO_SALIDA = 7;
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const BIG = new Set(['rugido_braquiosaurio', 'rugido_tyrannosaurus', 'llamada_parasaurolophus']);
-const VOZ = (n) => n.startsWith('rugido') || n.startsWith('llamada');
+// cuánta «espesura» tiene el sonido ambiente de cada bioma (insectos, cobijo del viento)
+const FOREST = { selva: 1, bosque: 0.8, taiga: 0.7, pantano: 0.6, pradera: 0.5, montana: 0.2, playa: 0.15, nieve: 0.05, desierto: 0.03, volcan: 0.02, mar: 0.05 };
+const BIG = new Set(['rugido_braquiosaurio', 'rugido_tyrannosaurus', 'llamada_parasaurolophus', 'voz_colosal', 'voz_rugido']);
+const VOZ = (n) => n.startsWith('rugido') || n.startsWith('llamada') || n.startsWith('voz_');
 const REVERB = { trueno: 0.75, talar_caida: 0.35, muerte: 0.5, buho: 0.5, pajaro: 0.35, gaviota: 0.25, rana: 0.2 };
 
 export async function create(ctx) {
   let ac = null, K = null, nb = null;
   let master, sfx, amb, mus, reverbIn, reverbOut, lowpass, comp;
-  let music = null, ambience = null;
+  let music = null, ambience = null, titulo = null, tit = null;
+  // la pista de portada se descarga desde ya (sin AudioContext todavía: eso exige un gesto)
+  // (en modo depuración no se descarga: las pruebas y capturas arrancan ya jugando y no la usan)
+  const elTitulo = !ctx.debug.enabled && new URLSearchParams(location.search).get('titulo') !== '0' && typeof Audio !== 'undefined' ? MusicaTitulo.precargar(base() + TITULO_URL) : null;
+  let quiereTitulo = false; // el juego está (o vuelve a estar) en el menú: la portada debe sonar en cuanto el navegador lo permita
   let voices = 0;
   let started = false;
 
@@ -35,12 +46,24 @@ export async function create(ctx) {
       const conv = ac.createConvolver(); conv.buffer = ir;
       reverbIn = ac.createGain(); reverbIn.gain.value = 1; reverbOut = ac.createGain(); reverbOut.gain.value = 0.55;
       reverbIn.connect(conv); conv.connect(reverbOut); reverbOut.connect(lowpass);
+      // portada: volumen propio (la pista viene masterizada a −14 LUFS; con el control de música por defecto queda ≈ −21 LUFS tras el general)
+      tit = ac.createGain(); tit.gain.value = TITULO_GAIN * clamp(ctx.settings.musica ?? 0.6, 0, 1); tit.connect(lowpass);
+      if (elTitulo) titulo = new MusicaTitulo(ac, tit, elTitulo);
       ambience = new Ambience();
       music = new Music(K, (() => { const g = ac.createGain(); g.gain.value = 1; g.connect(mus); const s = ac.createGain(); s.gain.value = 0.5; g.connect(s); s.connect(reverbIn); return g; })());
       return true;
     } catch { ac = null; return false; }
   }
-  const resume = () => { if (!ensure()) return; if (ac.state === 'suspended') ac.resume().catch(() => {}); started = true; };
+  /** Arranca la portada si el juego está en el menú y el audio ya puede sonar (o reintenta si el navegador la había rechazado). */
+  function sincronizarTitulo() {
+    if (!titulo || !quiereTitulo || !ac || ac.state !== 'running') return;
+    if (titulo.estado === 'detenida' || titulo.estado === 'esperando' || titulo.estado === 'saliendo') titulo.entrar();
+  }
+  const resume = () => {
+    if (!ensure()) return;
+    if (ac.state === 'suspended') ac.resume().then(sincronizarTitulo, () => {}); else sincronizarTitulo();
+    started = true;
+  };
   for (const e of ['pointerdown', 'keydown', 'click']) window.addEventListener(e, resume, { passive: true });
 
   // ------------------------------------------------------------------ voces y espacialización
@@ -121,7 +144,7 @@ export async function create(ctx) {
       const cam = ctx.camera.position;
       const under = cam.y < ctx.world.seaLevel - 0.05; this.under = under;
       const dim = under ? 0.12 : 1;
-      const forest = this.biome === 'selva' ? 1 : this.biome === 'pradera' || this.biome === 'pantano' ? 0.6 : this.biome === 'playa' ? 0.15 : 0.1;
+      const forest = FOREST[this.biome] ?? 0.1;
       const windV = clamp(0.06 + W.windStrength * 0.34 + W.storm * 0.3 + clamp(this.alt / 220, 0, 1) * 0.16, 0, 0.9) * (1 - 0.35 * forest);
       s(this.windG.gain, windV * 0.7 * dim); s(this.windLP.frequency, 300 + W.windStrength * 1500 + W.storm * 700);
       s(this.whistleG.gain, clamp(W.windStrength - 0.45, 0, 1) * 0.08 * dim); s(this.whistleBP.frequency, 700 + Math.sin(this.t * 0.4) * 250 + W.windStrength * 400);
@@ -129,8 +152,8 @@ export async function create(ctx) {
       s(this.seaG.gain, 0.2 * sea * dim); s(this.seaHG.gain, 0.034 * sea * dim); this.seaLfoG.gain.setTargetAtTime(0.12 * sea * dim, now, 1); this.seaLfoH.gain.setTargetAtTime(0.03 * sea * dim, now, 1);
       s(this.bedG.gain, 0.05 * forest * (1 - night * 0.5) * dim * (1 - W.rain * 0.4));
       const day = 1 - night;
-      s(this.cicG.gain, (this.biome === 'selva' || this.biome === 'pradera') && !under ? 0.018 * day * forest * (1 - W.rain) * (0.6 + 0.4 * Math.sin(this.t * 0.13)) : 0, 2);
-      s(this.criG.gain, (this.biome !== 'montana' && this.biome !== 'nieve') && !under ? 0.03 * night * (0.3 + forest * 0.7) * (1 - W.rain) : 0, 2);
+      s(this.cicG.gain, (this.biome === 'selva' || this.biome === 'pradera' || this.biome === 'bosque') && !under ? 0.018 * day * forest * (1 - W.rain) * (0.6 + 0.4 * Math.sin(this.t * 0.13)) : 0, 2);
+      s(this.criG.gain, (this.biome !== 'montana' && this.biome !== 'nieve' && this.biome !== 'volcan' && this.biome !== 'mar') && !under ? 0.03 * night * (0.3 + forest * 0.7) * (1 - W.rain) : 0, 2);
       this.chirpT -= dt; if (this.chirpT <= 0 && night > 0.4) { // grillos: trenes de pulsos
         this.chirpT = rnd(0.5, 0.75); const g = this.criGate.gain; g.cancelScheduledValues(now);
         for (let i = 0; i < 3; i++) { g.setValueAtTime(0.0001, now + i * 0.085); g.linearRampToValueAtTime(1, now + i * 0.085 + 0.012); g.linearRampToValueAtTime(0.0001, now + i * 0.085 + 0.06); }
@@ -165,23 +188,54 @@ export async function create(ctx) {
   });
   ctx.events.on('flora:felled', ({ position }) => play('talar_caida', position ?? null, { v: 1 }));
   ctx.events.on('creature:hit', ({ position }) => play('golpe_carne', position ?? null));
-  ctx.events.on('creature:roar', ({ especie, position, llamada }) => { const n = llamada && RECIPES[`llamada_${especie}`] ? `llamada_${especie}` : `rugido_${especie}`; play(n, position ?? null); });
-  ctx.events.on('creature:killed', ({ especie, position }) => { play('golpe_carne', position ?? null, { v: 1.2 }); if (RECIPES[`rugido_${especie}`] && Math.random() < 0.6) play(`rugido_${especie}`, position ?? null, { tono: 0.75, v: 0.8 }); });
+  // receta propia de la especie si existe; si no, la voz genérica de su tipo (`voz` = {tipo, tono} de la ficha) con el tono que le toca por masa
+  const vozDe = (especie, llamada, voz) => {
+    const propia = llamada && RECIPES[`llamada_${especie}`] ? `llamada_${especie}` : `rugido_${especie}`;
+    if (RECIPES[propia] || !voz || !RECIPES[`voz_${voz.tipo}`]) return { n: propia, o: {} };
+    return { n: `voz_${voz.tipo}`, o: { tono: voz.tono * (0.95 + Math.random() * 0.1), llamada: !!llamada, alt: !!voz.alt } };
+  };
+  ctx.events.on('creature:roar', ({ especie, position, llamada, voz }) => { const { n, o } = vozDe(especie, llamada, voz); play(n, position ?? null, o); });
+  ctx.events.on('creature:killed', ({ especie, position, voz }) => {
+    play('golpe_carne', position ?? null, { v: 1.2 });
+    if (Math.random() < 0.6) { const { n, o } = vozDe(especie, false, voz); if (RECIPES[n]) play(n, position ?? null, { ...o, tono: (o.tono ?? 1) * 0.75, v: 0.8 }); }
+  });
   ctx.events.on('weather:lightning', ({ intensity, position }) => {
     const cam = ctx.camera.position, d = position ? Math.hypot(position.x - cam.x, position.z - cam.z) : 600;
     setTimeout(() => play('trueno', null, { v: clamp((intensity ?? 0.8) * (1.15 - d / 2600), 0.15, 1.2) }), Math.min(7000, (d / 340) * 1000));
   });
   ctx.events.on('ui:sound', ({ nombre }) => play(nombre));
+  // la portada acompaña al menú y se apaga con un fundido largo al empezar la partida (la música generativa y el ambiente toman el relevo)
+  ctx.events.on('state', ({ state, prev }) => {
+    if (state === 'menu') { quiereTitulo = true; sincronizarTitulo(); }
+    else if (state === 'playing' && prev === 'menu') { quiereTitulo = false; titulo?.salir(TITULO_SALIDA); }
+    else if (state !== 'loading') quiereTitulo = false;
+  });
+  if (ctx.state === 'menu') quiereTitulo = true;
 
   // ------------------------------------------------------------------ API pública
   ctx.audio = {
     play, resume,
     setMasterVolume(v) { ctx.settings.volumen = v; if (master) master.gain.setTargetAtTime(clamp(v, 0, 1), ac.currentTime, 0.05); },
-    setMusicVolume(v) { ctx.settings.musica = v; if (mus) mus.gain.setTargetAtTime(0.55 * clamp(v, 0, 1), ac.currentTime, 0.1); },
+    setMusicVolume(v) { ctx.settings.musica = v; if (mus) mus.gain.setTargetAtTime(0.55 * clamp(v, 0, 1), ac.currentTime, 0.1); if (tit) tit.gain.setTargetAtTime(TITULO_GAIN * clamp(v, 0, 1), ac.currentTime, 0.1); },
     setSfxVolume(v) { if (sfx) sfx.gain.setTargetAtTime(clamp(v, 0, 1), ac.currentTime, 0.05); },
     setListener() { /* el oyente sigue a ctx.camera en update() */ },
     get recipes() { return Object.keys(RECIPES); },
     get running() { return !!ac && ac.state === 'running'; },
+    /** Estado de la música de portada (para la interfaz y las pruebas). */
+    titulo: {
+      get estado() { return titulo ? titulo.estado : 'ausente'; },
+      get sonando() { return !!titulo && titulo.estado === 'sonando' && !titulo.el.paused; },
+      get nivel() { return titulo ? titulo.nivel : 0; },
+      get tiempo() { return titulo ? titulo.el.currentTime : 0; },
+      get duracion() { return titulo ? titulo.el.duration : 0; },
+      get veces() { return titulo ? titulo.vecesIniciada : 0; },
+      get pausada() { return titulo ? titulo.el.paused : true; },
+      get diag() { return { reloj: ac?.currentTime ?? 0, finSalida: titulo?.finSalida ?? null, contexto: ac?.state ?? null, iniciado: started }; },
+      rms: () => (titulo ? titulo.medir() : 0),
+      entrar: (f) => { quiereTitulo = true; return titulo ? titulo.entrar(f) : false; },
+      salir: (f) => { quiereTitulo = false; titulo?.salir(f ?? TITULO_SALIDA); },
+      parar: () => { quiereTitulo = false; titulo?.parar(); },
+    },
     /** Renderiza una receta con OfflineAudioContext y devuelve métricas objetivas (para pruebas). */
     async measure(nombre, opts = {}) {
       const rec = RECIPES[nombre]; if (!rec) return null;
@@ -218,7 +272,8 @@ export async function create(ctx) {
       const step = Math.min(dt || ctx.time.realDt, 0.1);
       ambience.tick(step);
       // la música baja en menús/pausa y sube con el peligro
-      const playing = ctx.state === 'playing' || ctx.state === 'menu';
+      titulo?.vigilar();
+      const playing = (ctx.state === 'playing' || ctx.state === 'menu') && !titulo?.activa; // mientras suena la portada, la música generativa espera
       let danger = 0;
       if (ctx.state === 'playing') {
         const near = ctx.fauna?.getNear?.(ctx.player.position, 34, []) ?? [];

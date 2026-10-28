@@ -9,7 +9,7 @@ export function initLoading(ctx) {
     if (label) label.textContent = text;
     if (progress >= 1 && root) {
       if (ctx.debug.enabled) { root.remove(); return; }
-      root.style.opacity = '0';
+      root.style.opacity = '0'; root.style.pointerEvents = 'none'; // mientras se desvanece no debe tragarse el primer clic del menú
       setTimeout(() => root.remove(), 900);
     }
   });

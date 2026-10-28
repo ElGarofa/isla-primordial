@@ -3,6 +3,7 @@
 // Atributos extra: aSway (0 en la base → 1 en la punta, para el viento) y color por vértice (AO horneado).
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rng.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 class Builder {
   constructor() {
@@ -233,30 +234,65 @@ export function buildFern(seed = 1, lod = 0) {
   return B.build();
 }
 
-/** Roca: icosfera desplazada con ruido y achatada; color por vértice (más oscura abajo, líquen arriba). */
-export function buildRock(seed = 1, detail = 3) {
-  const rnd = mulberry32(seed * 2713 + 1);
-  const geo = new THREE.IcosahedronGeometry(1, detail).toNonIndexed();
+/**
+ * Roca con fracturas: icosfera deformada con ruido y cortada por varios planos (caras de fractura planas), en varias formas:
+ *   'canto' (rodado, pocas fracturas) · 'bloque' (anguloso) · 'losa' (plana y ancha) · 'aguja' (alta y estrecha) · 'afloramiento' (3–5 bloques soldados).
+ * Color por vértice: AO (más oscuro abajo y en las concavidades) y verdín en lo que mira hacia arriba. La textura la pone el material (triplanar en mundo).
+ */
+const FORMAS_ROCA = ['canto', 'bloque', 'canto', 'losa', 'bloque', 'aguja', 'afloramiento'];
+export const N_ROCAS = FORMAS_ROCA.length;
+function piezaRoca(rnd, detail, forma) {
+  const geo0 = new THREE.IcosahedronGeometry(1, detail), geo = geo0.index ? geo0.toNonIndexed() : geo0;
   const p = geo.attributes.position;
-  const ph = [rnd() * 9, rnd() * 9, rnd() * 9], fr = [1.3 + rnd(), 2.7 + rnd() * 1.4, 5.5 + rnd() * 2];
-  const sx = 0.9 + rnd() * 0.5, sy = 0.55 + rnd() * 0.3, sz = 0.8 + rnd() * 0.5;
-  const mp = (x, y, z) => {
-    let d = 0; for (let o = 0; o < 3; o++) d += Math.sin(x * fr[o] + ph[o]) * Math.cos(z * fr[o] * 0.9 + ph[(o + 1) % 3]) * Math.sin(y * fr[o] * 1.1 + ph[(o + 2) % 3]) / (o + 1.2);
-    return 1 + d * 0.28;
-  };
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const k = mp(x, y, z);
-    // facetas: cuantiza un poco la altura para sugerir planos de fractura
-    p.setXYZ(i, x * k * sx, Math.max(-0.35, y * k * sy), z * k * sz);
+  const ph = [rnd() * 9, rnd() * 9, rnd() * 9], fr = [1.1 + rnd(), 2.6 + rnd() * 1.4, 6 + rnd() * 2];
+  const esc = { canto: [1 + rnd() * 0.4, 0.62 + rnd() * 0.25, 0.9 + rnd() * 0.3], bloque: [1 + rnd() * 0.5, 0.75 + rnd() * 0.35, 0.85 + rnd() * 0.4], losa: [1.4 + rnd() * 0.5, 0.32 + rnd() * 0.12, 1.1 + rnd() * 0.4], aguja: [0.55 + rnd() * 0.2, 1.7 + rnd() * 0.8, 0.5 + rnd() * 0.2] }[forma === 'afloramiento' ? 'bloque' : forma];
+  const amp = forma === 'canto' ? 0.16 : 0.1;
+  const ruido = (x, y, z) => { let d = 0; for (let o = 0; o < 3; o++) d += Math.sin(x * fr[o] + ph[o]) * Math.cos(z * fr[o] * 0.9 + ph[(o + 1) % 3]) * Math.sin(y * fr[o] * 1.1 + ph[(o + 2) % 3]) / (o + 1.2); return d; };
+  // planos de fractura: normal al azar (sesgada a los lados y arriba) y distancia < 1: lo que sobresale se proyecta sobre el plano
+  const nPl = { canto: 2, bloque: 7, losa: 5, aguja: 6 }[forma === 'afloramiento' ? 'bloque' : forma];
+  const planos = [];
+  for (let k = 0; k < nPl; k++) {
+    const a = rnd() * Math.PI * 2, e = (rnd() - 0.25) * 1.3;
+    planos.push({ n: [Math.cos(a) * Math.cos(e), Math.sin(e), Math.sin(a) * Math.cos(e)], d: 0.62 + rnd() * 0.28 });
   }
-  geo.computeVertexNormals();
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const k = 1 + ruido(x, y, z) * amp;
+    x *= k; y *= k; z *= k;
+    // los cortes se hacen en el espacio de la esfera unidad (antes de estirar): una transformación afín conserva las caras planas
+    for (const pl of planos) {
+      const d = pl.d * (forma === 'aguja' ? 0.8 : 1), s2 = x * pl.n[0] + y * pl.n[1] + z * pl.n[2];
+      if (s2 > d) { const t = s2 - d; x -= pl.n[0] * t; y -= pl.n[1] * t; z -= pl.n[2] * t; }
+    }
+    p.setXYZ(i, x * esc[0], Math.max(-0.3, y) * esc[1], z * esc[2]); // la base queda plana y algo enterrada
+  }
+  return geo;
+}
+export function buildRock(seed = 1, detail = 3, forma = null) {
+  const rnd = mulberry32(seed * 2713 + 1);
+  forma = forma ?? FORMAS_ROCA[(seed - 1) % FORMAS_ROCA.length];
+  let geo;
+  if (forma === 'afloramiento') {
+    const partes = [], n = 3 + ((rnd() * 3) | 0);
+    for (let k = 0; k < n; k++) {
+      const g = piezaRoca(rnd, Math.max(1, detail - 1), k === 0 ? 'bloque' : rnd() < 0.5 ? 'bloque' : 'losa');
+      const sc = k === 0 ? 1 : 0.45 + rnd() * 0.45, a = rnd() * 6.28, r = k === 0 ? 0 : 0.7 + rnd() * 0.6;
+      g.scale(sc, sc * (0.8 + rnd() * 0.5), sc); g.rotateY(rnd() * 6.28); g.rotateZ((rnd() - 0.5) * 0.35); g.translate(Math.cos(a) * r, sc * 0.1, Math.sin(a) * r);
+      partes.push(g);
+    }
+    const tot = partes.reduce((s2, g) => s2 + g.attributes.position.count, 0), pos = new Float32Array(tot * 3);
+    let o = 0; for (const g of partes) { pos.set(g.attributes.position.array, o); o += g.attributes.position.array.length; }
+    geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  } else geo = piezaRoca(rnd, detail, forma);
+  geo = toCreasedNormals(geo, 0.85); // suave dentro de cada cara, arista viva entre caras de fractura
+  const p = geo.attributes.position, nrm = geo.attributes.normal;
+  geo.computeBoundingBox(); const bb = geo.boundingBox, alto = Math.max(0.01, bb.max.y - bb.min.y);
   const col = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) {
-    const y = p.getY(i), up = geo.attributes.normal.getY(i);
-    const base = 0.62 + 0.25 * Math.max(0, y) + (rnd() * 0.02);
-    const moss = Math.max(0, up - 0.45) * 0.9;
-    col[i * 3] = base * (0.92 - moss * 0.35); col[i * 3 + 1] = base * (0.9 + moss * 0.18); col[i * 3 + 2] = base * (0.86 - moss * 0.35);
+    const hy = (p.getY(i) - bb.min.y) / alto, up = nrm.getY(i);
+    const ao = 0.5 + 0.5 * Math.min(1, hy * 1.6 + 0.15) - Math.max(0, -up) * 0.12; // base y panzas más oscuras
+    const moss = Math.max(0, up - 0.55) * (forma === 'aguja' ? 0.4 : 1.1) * (0.6 + 0.4 * Math.sin(p.getX(i) * 3.1 + p.getZ(i) * 2.3));
+    col[i * 3] = ao * (1 - moss * 0.42); col[i * 3 + 1] = ao * (1 - moss * 0.08); col[i * 3 + 2] = ao * (1 - moss * 0.5);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.setAttribute('aSway', new THREE.BufferAttribute(new Float32Array(p.count), 1));
@@ -265,6 +301,7 @@ export function buildRock(seed = 1, detail = 3) {
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.computeBoundingSphere(); geo.computeBoundingBox();
   geo.clearGroups(); geo.addGroup(0, p.count, 0);
+  geo.userData.forma = forma;
   return geo;
 }
 
@@ -285,4 +322,150 @@ export function buildGrassClump() {
   const col = g.attributes.color, pos = g.attributes.position;
   for (let i = 0; i < col.count; i++) { const h = Math.min(1, pos.getY(i) / 0.68); const ao = 0.45 + 0.55 * h; col.setXYZ(i, ao, ao, ao); g.attributes.aSway.setX(i, h * h); }
   return g;
+}
+
+/** Cactus columnar acanalado con 1–3 brazos (material liso de vertex colors: grupo 2). */
+export function buildCactus(seed = 1, lod = 0) {
+  const rnd = mulberry32(seed * 619 + 17), B = new Builder();
+  const H = 3.0 + rnd() * 2.8, R = 0.27 + rnd() * 0.12;
+  const rings = lod === 0 ? 9 : lod === 1 ? 5 : 3, radial = lod === 0 ? 14 : lod === 1 ? 9 : 6;
+  const ribs = 9 + ((rnd() * 4) | 0), tint = [0.36, 0.56, 0.30];
+  tube(B, (t) => V(0, t * H, 0), (t, a) => R * (1 - 0.4 * Math.pow(t, 3.2)) * (1 + 0.09 * Math.cos(a * ribs)) * Math.min(1, 0.55 + t * 5), rings, radial, { uvScaleV: 1, tint, group: 2, swayBase: 0, swayTop: 0.06, cap: true, aoBase: 0.7 });
+  const nArms = lod === 2 ? 1 : 1 + ((rnd() * 3) | 0);
+  for (let i = 0; i < nArms; i++) {
+    const a = (i / nArms) * 6.28 + rnd() * 1.4, y0 = H * (0.32 + rnd() * 0.3), out = 0.9 + rnd() * 0.7, up = 1.0 + rnd() * 1.5;
+    const p0 = V(0, y0, 0), p1 = V(Math.cos(a) * out * 1.1, y0 + 0.05, Math.sin(a) * out * 1.1), p2 = V(Math.cos(a) * out * 1.3, y0 + up, Math.sin(a) * out * 1.3);
+    const bez = (t) => p0.clone().multiplyScalar((1 - t) * (1 - t)).addScaledVector(p1, 2 * (1 - t) * t).addScaledVector(p2, t * t);
+    tube(B, bez, (t, ang) => R * 0.62 * (1 - 0.35 * t * t) * (1 + 0.08 * Math.cos(ang * ribs)), Math.max(4, rings), Math.max(6, radial - 2), { uvScaleV: 1, tint, group: 2, swayBase: 0.02, swayTop: 0.1, cap: true, aoBase: 0.75 });
+  }
+  return B.build();
+}
+
+/** Árbol seco o calcinado: tronco retorcido y ramas peladas, sin follaje. */
+export function buildDeadTree(seed = 1, lod = 0) {
+  const rnd = mulberry32(seed * 733 + 29), B = new Builder();
+  const H = 6 + rnd() * 4.5, bendA = rnd() * 6.28, bend = 0.5 + rnd() * 1.5, tint = [0.8, 0.76, 0.72];
+  const path = (t) => V(Math.cos(bendA) * bend * t * t, t * H, Math.sin(bendA) * bend * t * t);
+  tube(B, path, (t) => 0.34 * (1 - 0.84 * t) * (1 + 0.55 * Math.exp(-t * 14)), lod === 0 ? 10 : 5, lod === 0 ? 8 : 5, { uvScaleV: H / 2, swayBase: 0, swayTop: 0.15, tint, cap: true });
+  const nb = lod === 0 ? 7 : lod === 1 ? 4 : 2;
+  for (let i = 0; i < nb; i++) {
+    const t0 = 0.3 + 0.62 * (i / nb) + rnd() * 0.05, a = rnd() * 6.28, L = (1.8 + rnd() * 2.3) * (1.2 - t0 * 0.55);
+    const from = path(t0), to = from.clone().add(V(Math.cos(a) * L, L * (0.45 + rnd() * 0.6), Math.sin(a) * L));
+    tube(B, (t) => from.clone().lerp(to, t).add(V(0, Math.sin(t * Math.PI) * 0.25, 0)), (t) => 0.11 * (1 - 0.86 * t), 3, 5, { uvScaleV: 1.4, swayBase: 0.15, swayTop: 0.4, tint, cap: true, aoBase: 0.7 });
+  }
+  return B.build();
+}
+
+// ================================================================================================ flora mesozoica (añadida)
+/** Fronda pinnada (tira con textura de fronda) que sale de `base` hacia `yaw`, sube con ángulo `lift` y se curva hacia abajo `caida` rad. */
+function fronda(B, base, yaw, len, lift, caida, wid, segs, tint, swayBase = 0.5) {
+  const dir = V(Math.cos(yaw), 0, Math.sin(yaw)), side = V(-Math.sin(yaw), 0, Math.cos(yaw));
+  const pts = []; let p = base.clone(), ang = lift;
+  for (let s = 0; s <= segs; s++) { pts.push(p.clone()); const st = len / segs; p = p.clone().addScaledVector(dir, Math.cos(ang) * st).add(V(0, Math.sin(ang) * st, 0)); ang -= caida / segs * (0.6 + 0.8 * s / segs); }
+  const ids = [];
+  for (let s = 0; s <= segs; s++) {
+    const w = wid * (Math.sin(Math.PI * (0.12 + 0.88 * (s / segs))) * 0.6 + 0.4) * (1 - 0.35 * (s / segs));
+    const tg = V().subVectors(pts[Math.min(segs, s + 1)], pts[Math.max(0, s - 1)]).normalize();
+    const nn = V().crossVectors(side, tg).normalize();
+    const sw = swayBase + (1 - swayBase) * (s / segs);
+    ids.push([B.vert(pts[s].clone().addScaledVector(side, -w), nn.clone(), 0, 1 - s / segs, tint, sw), B.vert(pts[s].clone().addScaledVector(side, w), nn.clone(), 1, 1 - s / segs, tint, sw)]);
+  }
+  for (let s = 0; s < segs; s++) { const [l0, r0] = ids[s], [l1, r1] = ids[s + 1]; B.tri(1, l0, r0, r1); B.tri(1, l0, r1, l1); }
+}
+
+/** Helecho arborescente (Cyatheales): tronco fibroso fino de 3–6 m y una corona de frondas largas que se arquean hacia abajo. */
+export function buildTreeFern(seed = 1, lod = 0) {
+  const rnd = mulberry32(seed * 4241 + 9), B = new Builder();
+  const H = 3 + rnd() * 3.2, bendA = rnd() * 6.28, bend = 0.2 + rnd() * 0.6;
+  const path = (t) => V(Math.cos(bendA) * bend * t * t, t * H, Math.sin(bendA) * bend * t * t);
+  tube(B, path, (t) => (0.2 - 0.05 * t) * (1 + 0.6 * Math.exp(-t * 10)) * (1 + 0.06 * Math.sin(t * 60)), lod === 0 ? 10 : 4, lod === 0 ? 8 : 5, { uvScaleV: H / 1.2, swayBase: 0, swayTop: 0.4, aoBase: 0.55, tint: [0.75, 0.68, 0.6] });
+  const top = path(1).add(V(0, 0.05, 0)), n = lod === 0 ? 13 : lod === 1 ? 9 : 6;
+  for (let i = 0; i < n; i++) {
+    const yaw = (i / n) * 6.28 + rnd() * 0.35;
+    fronda(B, top, yaw, 2.3 + rnd() * 1.2, 0.55 + rnd() * 0.5, 2.0 + rnd() * 0.6, 0.55 + rnd() * 0.15, lod === 0 ? 7 : 3, [0.78 + rnd() * 0.15, 0.95, 0.7 + rnd() * 0.12], 0.45);
+  }
+  if (lod === 0) for (let i = 0; i < 4; i++) fronda(B, top.clone().add(V(0, 0.1, 0)), rnd() * 6.28, 0.9 + rnd() * 0.4, 1.35, 0.9, 0.3, 4, [0.7, 0.92, 0.6], 0.5); // frondas nuevas, enrolladas hacia arriba
+  return B.build();
+}
+
+/** Cícada (Cycadales): tronco corto y grueso de escamas y roseta de frondas rígidas casi verticales; a veces un cono central. */
+export function buildCycad(seed = 1, lod = 0) {
+  const rnd = mulberry32(seed * 6151 + 21), B = new Builder();
+  const H = 0.35 + rnd() * 1.3, R = 0.26 + rnd() * 0.16;
+  tube(B, (t) => V(0, t * H, 0), (t, a) => R * (1 - 0.25 * t) * (1 + 0.1 * Math.sin(a * 9 + t * 40) * Math.sin(t * 50)), lod === 0 ? 8 : 4, lod === 0 ? 12 : 7, { uvScaleV: H / 0.5, uvScaleU: 2, swayBase: 0, swayTop: 0.05, aoBase: 0.6, tint: [0.72, 0.62, 0.48] });
+  const top = V(0, H, 0), n = lod === 0 ? 18 : 10;
+  for (let i = 0; i < n; i++) {
+    const yaw = (i / n) * 6.28 + rnd() * 0.25, anillo = i % 2;
+    fronda(B, top.clone().add(V(0, anillo * 0.08, 0)), yaw, 1.3 + rnd() * 0.8, 0.95 + anillo * 0.3 + rnd() * 0.2, 0.75 + rnd() * 0.4, 0.42 + rnd() * 0.1, lod === 0 ? 5 : 3, [0.62 + rnd() * 0.12, 0.85, 0.55], 0.2);
+  }
+  if (rnd() < 0.45) tube(B, (t) => V(0, H + t * 0.45, 0), (t) => 0.13 * Math.sin(Math.PI * (0.15 + 0.85 * t)) + 0.02, 5, 8, { group: 2, tint: [0.62, 0.42, 0.18], swayBase: 0.05, swayTop: 0.1, cap: true, aoBase: 0.8 });
+  return B.build();
+}
+
+/** Araucaria: fuste recto y alto, ramas en verticilos solo en el tercio superior y copa aplanada en forma de paraguas. */
+export function buildAraucaria(seed = 1, lod = 0) {
+  const rnd = mulberry32(seed * 8761 + 3), B = new Builder();
+  const H = 22 + rnd() * 12, R0 = 0.42 + rnd() * 0.15;
+  tube(B, (t) => V(0, t * H, 0), (t) => R0 * (1 - 0.8 * t) * (1 + 0.5 * Math.exp(-t * 18)), lod === 0 ? 12 : 5, lod === 0 ? 10 : 6, { uvScaleV: H / 2.2, swayBase: 0, swayTop: 0.35, cap: true });
+  const verticilos = lod === 0 ? 6 : lod === 1 ? 4 : 3;
+  for (let k = 0; k < verticilos; k++) {
+    const t0 = 0.7 + 0.28 * (k / verticilos), y = t0 * H, L = (1 - (k / verticilos) * 0.55) * (4.2 + rnd() * 1.6);
+    const nr = lod === 0 ? 6 : 4;
+    for (let i = 0; i < nr; i++) {
+      const a = (i / nr) * 6.28 + k * 0.5 + rnd() * 0.3, d = V(Math.cos(a), 0, Math.sin(a));
+      const from = V(0, y, 0), to = from.clone().addScaledVector(d, L).add(V(0, L * 0.18, 0));
+      if (lod < 2) tube(B, (t) => from.clone().lerp(to, t).add(V(0, -Math.sin(t * Math.PI) * 0.35, 0)), (t) => 0.13 * (1 - 0.75 * t), 4, 4, { uvScaleV: 1.4, swayBase: 0.3, swayTop: 0.7, aoBase: 0.75 });
+      // racimos de hojas escamosas al final de la rama, más horizontales que en la conífera
+      const n2 = lod === 0 ? 3 : 2;
+      for (let j = 0; j < n2; j++) {
+        const c = from.clone().lerp(to, 0.55 + 0.45 * (j / n2)).add(V(0, 0.25, 0));
+        const right = V(-d.z, 0, d.x).multiplyScalar(1.3 + rnd() * 0.5), up = d.clone().multiplyScalar(1.2 + rnd() * 0.4).add(V(0, 0.18, 0));
+        card(B, c, right, up, 1, [0.5 + rnd() * 0.12, 0.66 + rnd() * 0.1, 0.5], V(0, y + 1.5, 0), 0.55 + 0.4 * (k / verticilos));
+        card(B, c.clone().add(V(0, 0.15, 0)), up.clone().multiplyScalar(0.8), V(0, 0.65, 0), 1, [0.48, 0.64, 0.48], V(0, y + 1.5, 0), 0.6);
+      }
+    }
+  }
+  return B.build();
+}
+
+/** Mata de colas de caballo (Equisetum): tallos verdes segmentados que crecen en la orilla y el pantano. */
+export function buildHorsetail(seed = 1, lod = 0) {
+  const rnd = mulberry32(seed * 3301 + 47), B = new Builder();
+  const n = lod === 0 ? 13 : 8;
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * 6.28, r = Math.sqrt(rnd()) * 0.45, H = 0.6 + rnd() * 1.1, lean = 0.08 + rnd() * 0.22;
+    const x0 = Math.cos(a) * r, z0 = Math.sin(a) * r, dx = Math.cos(a) * lean, dz = Math.sin(a) * lean;
+    const tint = [0.36 + rnd() * 0.08, 0.55 + rnd() * 0.08, 0.26];
+    const anillos = lod === 0 ? 5 : 2;
+    const f = B.n;
+    tube(B, (t) => V(x0 + dx * t * t * H, t * H, z0 + dz * t * t * H), (t) => 0.018 * (1 - 0.5 * t) + 0.006, anillos, lod === 0 ? 4 : 3, { group: 2, tint, swayBase: 0, swayTop: 0.9, cap: true, aoBase: 0.65 });
+    // nudos oscuros en los segmentos (bandas de color)
+    for (let v = f; v < B.n; v++) { const y = B.pos[v * 3 + 1], u = (y / H) * 7, band = Math.abs(u - Math.round(u)) < 0.12 ? 0.55 : 1; B.col[v * 3] *= band; B.col[v * 3 + 1] *= band; B.col[v * 3 + 2] *= band; }
+  }
+  return B.build();
+}
+
+/** Tronco caído: cilindro irregular tumbado a lo largo de X (centrado), extremos rotos, muñones de rama y verdín encima. */
+export function buildLog(seed = 1, lod = 0) {
+  const rnd = mulberry32(seed * 5303 + 77), B = new Builder();
+  const L = 5 + rnd() * 5, R = 0.32 + rnd() * 0.25, bend = (rnd() - 0.5) * 0.6;
+  const path = (t) => V((t - 0.5) * L, R * 0.85 + Math.sin(t * Math.PI) * bend * 0.3, Math.sin(t * Math.PI) * bend);
+  tube(B, path, (t, a) => R * (1 - 0.18 * t) * (1 + 0.07 * Math.sin(a * 5 + t * 23)) * (t < 0.04 || t > 0.96 ? 0.92 + 0.12 * Math.sin(a * 7) : 1), lod === 0 ? 14 : 5, lod === 0 ? 10 : 6, { uvScaleV: L / 2, uvScaleU: 2, swayBase: 0, swayTop: 0, aoBase: 1 });
+  // verdín y sombra: arriba verdoso, abajo oscuro
+  for (let v = 0; v < B.n; v++) {
+    const ny = B.nor[v * 3 + 1], up = Math.max(0, ny), down = Math.max(0, -ny);
+    const k = 0.62 + 0.38 * (1 - down);
+    B.col[v * 3] = k * (1 - up * 0.35); B.col[v * 3 + 1] = k * (1 + up * 0.12); B.col[v * 3 + 2] = k * (1 - up * 0.45);
+  }
+  // tapas de los extremos (madera clara, partida)
+  for (const t of [0, 1]) {
+    const c = path(t), n = V(t ? 1 : -1, 0, 0), centro = B.vert(c.clone().addScaledVector(n, 0.05), n, 0.5, 0.5, [1.25, 1.05, 0.8], 0), first = B.n;
+    for (let j = 0; j <= 10; j++) { const a = (j / 10) * 6.28, rr = R * (t ? 0.82 : 1) * (0.9 + 0.12 * Math.sin(a * 7)); B.vert(V(c.x, c.y + Math.cos(a) * rr, c.z + Math.sin(a) * rr), n, 0.5 + Math.cos(a) * 0.5, 0.5 + Math.sin(a) * 0.5, [1.1, 0.92, 0.7], 0); }
+    for (let j = 0; j < 10; j++) t ? B.tri(0, centro, first + j, first + j + 1) : B.tri(0, centro, first + j + 1, first + j);
+  }
+  if (lod === 0) for (let i = 0; i < 3; i++) { // muñones de ramas
+    const t0 = 0.2 + rnd() * 0.6, a = rnd() * 6.28, from = path(t0), d = V(rnd() - 0.5, Math.cos(a) * 0.8, Math.sin(a)).normalize(), lr = 0.5 + rnd() * 0.4;
+    tube(B, (t) => from.clone().addScaledVector(d, t * lr), (t) => R * 0.32 * (1 - 0.5 * t), 2, 5, { uvScaleV: 0.6, cap: true, aoBase: 0.8 });
+  }
+  return B.build();
 }

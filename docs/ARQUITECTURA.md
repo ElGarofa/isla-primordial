@@ -49,7 +49,11 @@ Posee: terreno (malla con LOD/chunks, material por splatting con texturas proced
 world.size, world.seaLevel, world.spawn (Vector3)
 world.getHeight(x,z) / getNormal(x,z,out) / getSlope(x,z)       (de heightfield.js; podés refinar la forma de la isla sin cambiar firmas)
 world.isWater(x,z)   world.getSurface(x,z) -> 'agua'|'arena'|'roca'|'nieve'|'barro'|'hierba'   (debe coincidir con lo que se VE)
-world.getBiome(x,z) -> 'playa'|'selva'|'pradera'|'montana'|'nieve'|'pantano'     (agregalo)
+world.getBiome(x,z) -> 'mar'|'playa'|'pradera'|'selva'|'bosque'|'pantano'|'desierto'|'montana'|'nieve'|'volcan'|'taiga'
+world.getProvince(x,z) -> provincia (`src/world/provincias.js`) | null en el mar     world.provinceIdx(x,z) (255 = mar)
+world.getSea(x,z) -> zona de mar | null en tierra     world.seaIdx(x,z) (255 = tierra)
+world.coastDist(x,z) (+ tierra, − mar)     world.humidity(x,z)     world.macro (rejillas de 16 m: H, B, P, Z, DC, DB, HUM)
+world.size (12288), world.half, world.limite (= size/2 − 260: el jugador no pasa de ahí)   Ver docs/MAPA.md
 world.water = { level, getWaveHeight(x,z,t), getDepth(x,z) }   (agregalo; lo usan player y fx)
 world.raycastTerrain(origin, dir, maxDist) -> { point, normal, distance } | null
 world.colliders: StaticColliders (src/world/colliders.js): addCircle(x,z,r,{height,kind,owner}) -> id, remove(id), query(x,z,r,out)
@@ -173,7 +177,8 @@ Los módulos siguen siendo los mismos; se amplió dentro de ellos. No hay un seg
 | `core/items.js` | Catálogo único de objetos, recetas, recolección, despiece, oficios y equipo animal (familia F, ranuras `RANURAS_ANIMAL`). Datos puros que también importan las pruebas en Node. |
 | `survival/saber.js` | Conocimiento: recetas aprendidas, XP por oficio (incluye `manejo`), calidad al fabricar. |
 | `fauna/catalogo.js` | 162 fichas de especies en datos; las implementadas llevan además `doma` y `montura`. |
-| `fauna/species.js`, `creature.js` | Fichas con malla/esqueleto/IK; `creature.rel` es la relación con el jugador. |
+| `fauna/species.js`, `creature.js` | Fichas con malla/esqueleto/IK; `creature.rel` es la relación con el jugador. Una ficha con bloque `glb` usa un modelo GLB (rama `applyGLB` de `Creature`). |
+| `fauna/modelo3d.js`, `malla.js` | **Modelos GLB**: carga y preparación una vez por especie (soldar, subdividir, normales, color por zona, UV, ojos), una malla compartida y un `AnimationMixer` por criatura, reloj de zancada por distancia, capas aditivas de cabeza/cuello y esferas de impacto ajustadas a la malla. Respaldo automático a la malla procedural. Ver `docs/MODELOS_3D.md`. |
 | `fauna/sentidos.js`, `cerebro.js`, `habilidades.js` | Percepción, estados de la IA y habilidades de especie conectadas a ella. |
 | `fauna/vinculo.js` | **Domesticación por niveles**: habituación, confianza, manejo, cuidado, órdenes, equipo, carga, guardado de `rel`. Se engancha a la IA en `cerebro.js` (`trato`, `sentirRel`, `tickRel`, correa de órdenes, `noCazaJugador`). |
 | `player/montura.js` | Montar, conducir y anclar al jugador a la silla (`ctx.montura`). Se ejecuta en la fase `lateUpdate`, después de que la fauna se movió. |

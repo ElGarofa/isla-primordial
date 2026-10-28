@@ -22,6 +22,13 @@ export const shots = {
       camera: { agl: true, pos: [p.x + 3.2, 1.4, p.z + 3.2], look: [p.x, 0.7, p.z] },
     };
   },
+  // fogata colocada de verdad (malla 3D de la fogata + fuego + luz), al atardecer y de cerca
+  fx_fogata_modelo: async (ctx) => {
+    const p = flatSpot(ctx);
+    await ctx.survival?.campfires?.listo;
+    ctx.survival?.campfires?.restore?.([{ x: p.x, z: p.z, fuel: 600 }]);
+    return { hour: 19.2, weather: { rain: 0, storm: 0, cloudCover: 0.2 }, setup: () => { ctx.debug.hideViewmodel = true; }, camera: { agl: true, pos: [p.x + 1.9, 1.25, p.z + 1.9], look: [p.x, 0.25, p.z] } };
+  },
   fx_fogata_atardecer: (ctx) => {
     const p = flatSpot(ctx);
     return {

@@ -39,6 +39,12 @@ export const ITEMS = {
   cuerno: I('Cuerno', 'recurso', 10, 1.4, 0.8, 'Cuerno macizo de un herbívoro acorazado.', { color: '#cdbb94' }),
   osteodermo: I('Osteodermo', 'recurso', 20, 1.1, 0.6, 'Placa ósea de la armadura de un anquilosaurio.', { color: '#a89a78' }),
 
+  // recursos propios de ciertos biomas (el mapa por provincias los reparte; ver docs/MAPA.md)
+  arcilla: I('Arcilla', 'recurso', 50, 1.0, 0.5, 'Barro fino y pegajoso de los pantanos: se moldea y se cuece.', { color: '#a1704f' }),
+  obsidiana: I('Obsidiana', 'recurso', 40, 0.4, 0.2, 'Vidrio volcánico negro: se talla en filos más cortantes que la piedra.', { color: '#1d1c22' }),
+  sal: I('Sal', 'recurso', 60, 0.15, 0.08, 'Costras de sal de playas y salares: conserva la carne.', { color: '#efe9e0' }),
+  ambar: I('Ámbar', 'recurso', 30, 0.05, 0.03, 'Resina fosilizada de los bosques fríos: dorada, dura y rara.', { color: '#e0952c' }),
+
   // ------------------------------------------------------------------------------------------------ materiales elaborados
   cuerda: I('Cuerda', 'recurso', 40, 0.1, 0.08, 'Cuerda trenzada de fibra o liana.', { color: '#bfa96a' }),
   guijarro: I('Guijarro', 'municion', 60, 0.15, 0.06, 'Piedra lisa para honda.', { clase: 'guijarro', dano: 9, rotura: 0.08, penetra: 0, color: '#9a978f' }),
@@ -49,6 +55,7 @@ export const ITEMS = {
   cuchillo_piedra: I('Cuchillo de piedra', 'herramienta', 1, 0.3, 0.2, 'Filo tosco para cortar y despiezar.', { dano: 8, cd: 0.4, dur: 45, etiquetas: ['corta'], reparar: { piedra: 1 } }),
   cuchillo_hueso: I('Cuchillo de hueso', 'herramienta', 1, 0.25, 0.2, 'Más fino y afilado que el de piedra.', { dano: 9, cd: 0.38, dur: 40, etiquetas: ['corta'], reparar: { hueso: 1 } }),
   cuchillo_diente: I('Cuchillo de diente', 'herramienta', 1, 0.3, 0.2, 'Un diente de depredador montado como cuchillo: corta casi todo.', { dano: 13, cd: 0.38, dur: 90, etiquetas: ['corta'], reparar: { resina: 1 } }),
+  cuchillo_obsidiana: I('Cuchillo de obsidiana', 'herramienta', 1, 0.3, 0.2, 'Filo de vidrio volcánico: corta mejor que la piedra, pero se mella.', { dano: 11, cd: 0.36, dur: 55, etiquetas: ['corta'], reparar: { obsidiana: 1 } }),
   punzon_hueso: I('Punzón de hueso', 'herramienta', 1, 0.1, 0.1, 'Perfora cuero para coserlo.', { dano: 4, cd: 0.4, dur: 60, etiquetas: ['perfora'], reparar: { hueso: 1 } }),
   martillo_piedra: I('Martillo de piedra', 'herramienta', 1, 2.0, 1.2, 'Machaca y da forma a piedra y hueso.', { dano: 12, cd: 0.7, dur: 80, etiquetas: ['martillar', 'contundente'], reparar: { piedra: 1, fibra: 1 } }),
   antorcha: I('Antorcha', 'herramienta', 1, 0.6, 0.6, 'Ilumina la noche.', { dano: 6, cd: 0.55, luz: true, dur: 120, etiquetas: [] }),
@@ -154,6 +161,7 @@ export const RECIPES = [
   R('punzon_hueso', 1, { hueso: 1 }, { herramienta: 'corta', xp: 2, aprende: { tiene: 'hueso' }, pista: 'Un hueso fino y aguzado perfora cuero.' }),
   R('martillo_piedra', 1, { madera: 2, piedra: 2, fibra: 2 }, { xp: 3, aprende: { receta: 'cuchillo_piedra' }, pista: 'Una piedra bien atada a un mango golpea más fuerte.' }),
   R('cuchillo_diente', 1, { diente: 1, madera: 1, resina: 1 }, { herramienta: 'corta', hab: { tipo: 'talla', nivel: 1 }, xp: 5, aprende: { tiene: 'diente' }, pista: 'Un diente de depredador ya viene afilado.' }),
+  R('cuchillo_obsidiana', 1, { obsidiana: 1, madera: 1, fibra: 2 }, { herramienta: 'martillar', hab: { tipo: 'talla', nivel: 1 }, xp: 5, aprende: { tiene: 'obsidiana' }, pista: 'El vidrio volcánico se desprende en lascas de filo perfecto.' }),
   R('arco', 1, { rama: 3, cuerda: 2 }, { herramienta: 'corta', hab: { tipo: 'caza', nivel: 0 }, xp: 5, aprende: { tiene: 'rama' }, pista: 'Una rama flexible y una cuerda tensa lanzan lejos.' }),
   R('honda', 1, { cuero: 1, cuerda: 2 }, { hab: { tipo: 'caza', nivel: 0 }, xp: 3, aprende: { receta: 'cuerda' }, pista: 'Una tira de cuero y cuerda hacen girar una piedra.' }),
   R('jabalina', 1, { madera: 3, piedra: 1, fibra: 2 }, { hab: { tipo: 'caza', nivel: 0 }, xp: 4, aprende: { receta: 'lanza' }, pista: 'Una lanza más corta y balanceada se puede arrojar.' }),
@@ -198,6 +206,13 @@ export const RECOLECCION = {
       { item: 'corteza', n: [1, 1], p: 0.25, req: 'talar' },
       { item: 'resina', n: [1, 1], p: 0.08 },
       { item: 'liana', n: [1, 1], p: 0.14, bioma: 'selva' },
+      { item: 'resina', n: [1, 2], p: 0.22, bioma: 'selva' }, // el látex de la selva rezuma por doquier
+      { item: 'hoja_grande', n: [1, 2], p: 0.3, bioma: 'selva' },
+      { item: 'hoja_grande', n: [1, 1], p: 0.25, bioma: 'playa' }, // palmas
+      { item: 'resina', n: [1, 2], p: 0.28, bioma: 'taiga' },
+      { item: 'ambar', n: [1, 1], p: 0.07, bioma: 'taiga' },
+      { item: 'resina', n: [1, 1], p: 0.15, bioma: 'bosque' },
+      { item: 'fibra', n: [1, 2], p: 0.35, bioma: 'pantano' },
     ],
     caida: [{ item: 'madera', n: [5, 5], p: 1 }, { item: 'rama', n: [2, 4], p: 1 }, { item: 'corteza', n: [2, 3], p: 1, req: 'talar' }],
   },
@@ -206,8 +221,30 @@ export const RECOLECCION = {
       { item: 'piedra', n: [2, 2], p: 1, req: 'picar' },
       { item: 'pedernal', n: [1, 1], p: 0.15, req: 'picar' },
       { item: 'piedra', n: [1, 1], p: 0.3, sin: 'picar' },
+      { item: 'pedernal', n: [1, 1], p: 0.18, req: 'picar', bioma: 'montana' }, // las tierras altas dan más pedernal
+      { item: 'pedernal', n: [1, 1], p: 0.18, req: 'picar', bioma: 'desierto' },
     ],
     caida: [{ item: 'piedra', n: [4, 4], p: 1 }, { item: 'pedernal', n: [1, 1], p: 1 }],
+  },
+  // tronco caído (flora/index.js): madera ya seca, sin caída; con hacha rinde más y suelta corteza
+  tronco: {
+    golpe: [
+      { item: 'madera', n: [1, 1], p: 0.8, sin: 'talar' },
+      { item: 'madera', n: [1, 2], p: 1, req: 'talar' },
+      { item: 'corteza', n: [1, 1], p: 0.3, req: 'talar' },
+      { item: 'rama', n: [1, 1], p: 0.3 },
+      { item: 'resina', n: [1, 1], p: 0.06 },
+    ],
+    caida: [{ item: 'madera', n: [3, 4], p: 1 }, { item: 'rama', n: [1, 2], p: 1 }],
+  },
+  // vetas: rocas con un mineral propio del bioma (flora/index.js las coloca; además de lo de una roca común)
+  veta_obsidiana: { golpe: [{ item: 'obsidiana', n: [1, 1], p: 0.5, req: 'picar' }], caida: [{ item: 'obsidiana', n: [2, 4], p: 1 }] },
+  veta_sal: { golpe: [{ item: 'sal', n: [1, 2], p: 0.6, req: 'picar' }, { item: 'sal', n: [1, 1], p: 0.25, sin: 'picar' }], caida: [{ item: 'sal', n: [3, 5], p: 1 }] },
+  veta_arcilla: { golpe: [{ item: 'arcilla', n: [1, 2], p: 1 }], caida: [{ item: 'arcilla', n: [4, 6], p: 1 }] },
+  // cactus: se corta con un filo para sacar agua; no se destruye (rebrota)
+  cactus: {
+    golpe: [{ item: 'agua', n: [1, 2], p: 1, req: 'corta' }, { item: 'fibra', n: [1, 1], p: 0.5 }],
+    caida: [],
   },
   baya: {
     golpe: [{ item: 'baya', n: [3, 5], p: 1 }, { item: 'fibra', n: [1, 1], p: 1 }, { item: 'hoja_grande', n: [1, 2], p: 0.5 }],

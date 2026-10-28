@@ -364,6 +364,39 @@ export const RECIPES = {
     return D + 0.1;
   },
 
+  // ---------------------------------------------------------------- voces genéricas por tipo (especies de familias sin receta propia)
+  // `p` (tono) viene de la masa de la especie: más pesada = más grave. Reutilizan las recetas de arriba o añaden las que faltaban.
+  voz_colosal(K, out, t, o) { return RECIPES.rugido_braquiosaurio(K, out, t, o); },
+  voz_bramido(K, out, t, o) { return RECIPES.rugido_triceratops(K, out, t, o); },
+  voz_rugido(K, out, t, o) { return RECIPES.rugido_tyrannosaurus(K, out, t, o); },
+  voz_rugido_agudo(K, out, t, o) { return RECIPES.rugido_raptor(K, out, t, o); },
+  voz_gruñido(K, out, t, o) { return (o.alt ? RECIPES.rugido_ankylosaurus : RECIPES.rugido_stegosaurus)(K, out, t, o); },
+  voz_graznido(K, out, t, o) { return RECIPES.rugido_gallimimus(K, out, t, o); },
+  voz_trompeta(K, out, t, o) { return (o.llamada ? RECIPES.llamada_parasaurolophus : RECIPES.rugido_parasaurolophus)(K, out, t, o); },
+  voz_chillido(K, out, t, o) { return RECIPES.rugido_compsognatus(K, out, t, o); },
+  voz_chirrido(K, out, t, o) { return RECIPES.rugido_pteranodon(K, out, t, o); },
+  voz_siseo(K, out, t, o) { // cocodrilomorfos: siseo de aire + gruñido bajo entrecortado
+    const v = o.v ?? 1, D = 1.7, p = o.p ?? rnd(0.92, 1.08);
+    K.burst(out, t, { type: 'white', f: 3600 * p, q: 0.9, ft: 'bandpass', a: 0.1, d: D - 0.4, peak: 0.26 * v });
+    K.burst(out, t + 0.05, { type: 'pink', f: 700 * p, q: 0.7, ft: 'bandpass', a: 0.15, d: D - 0.5, peak: 0.22 * v });
+    const os = K.osc('sawtooth', 70 * p, t, D), am = K.osc('sine', 13, t, D), ag = K.gain(0.32), g = K.gain(0), f = K.filt('lowpass', 460, 1.2);
+    K.glide(os, t, [[0, 58 * p], [0.45, 88 * p], [D, 48 * p]]);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.42 * v, t + 0.2); g.gain.linearRampToValueAtTime(0.3 * v, t + 1.0); g.gain.exponentialRampToValueAtTime(0.0001, t + D);
+    am.connect(ag); ag.connect(g.gain); K.chain(os, f, g, out);
+    return D + 0.2;
+  },
+  voz_bufido(K, out, t, o) { // reptiles marinos: resoplido húmedo al salir a respirar y gemido grave
+    const v = o.v ?? 1, D = 2.4, p = o.p ?? rnd(0.94, 1.06);
+    K.burst(out, t, { type: 'pink', f: 950, q: 0.7, ft: 'bandpass', a: 0.03, d: 0.55, peak: 0.34 * v });
+    K.burst(out, t, { type: 'white', f: 3200, q: 0.8, ft: 'highpass', a: 0.02, d: 0.3, peak: 0.1 * v });
+    const os = K.osc('sine', 90 * p, t + 0.35, D), os2 = K.osc('triangle', 45 * p, t + 0.35, D), vib = K.osc('sine', 3.2, t + 0.35, D), vg = K.gain(5 * p), g = K.gain(0), f = K.filt('lowpass', 420, 1);
+    K.glide(os, t + 0.35, [[0, 72 * p], [0.6, 135 * p], [1.5, 105 * p], [D - 0.05, 60 * p]]); K.glide(os2, t + 0.35, [[0, 36 * p], [0.6, 67 * p], [1.5, 52 * p], [D - 0.05, 30 * p]]);
+    vib.connect(vg); vg.connect(os.frequency);
+    g.gain.setValueAtTime(0.0001, t + 0.35); g.gain.linearRampToValueAtTime(0.55 * v, t + 1.0); g.gain.linearRampToValueAtTime(0.45 * v, t + 1.8); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35 + D - 0.05);
+    os.connect(f); os2.connect(f); f.connect(g); g.connect(out);
+    return D + 0.5;
+  },
+
   // ---------------------------------------------------------------- ambiente puntual
   pajaro(K, out, t, o) {
     const v = o.v ?? 1, n = 2 + ((Math.random() * 4) | 0), base = o.base ?? rnd(2200, 4200);
@@ -412,6 +445,6 @@ export function drum(K, out, t, v = 0.5, f = 62) {
 }
 
 /** Atenuación por receta para que ninguna sature antes del compresor. */
-export const TRIM = { golpe_madera: 0.7, golpe_roca: 0.72, talar_caida: 0.7, muerte: 0.62, trueno: 0.55, rugido_triceratops: 0.36, rugido_braquiosaurio: 0.25, rugido_raptor: 0.9, rugido_tyrannosaurus: 0.3, rugido_stegosaurus: 0.42, rugido_ankylosaurus: 0.42, rugido_gallimimus: 0.7, llamada_parasaurolophus: 0.4, rugido_parasaurolophus: 0.5, aterrizaje: 0.9 };
+export const TRIM = { golpe_madera: 0.7, golpe_roca: 0.72, talar_caida: 0.7, muerte: 0.62, trueno: 0.55, rugido_triceratops: 0.36, rugido_braquiosaurio: 0.25, rugido_raptor: 0.9, rugido_tyrannosaurus: 0.3, rugido_stegosaurus: 0.42, rugido_ankylosaurus: 0.42, rugido_gallimimus: 0.7, llamada_parasaurolophus: 0.4, rugido_parasaurolophus: 0.5, aterrizaje: 0.9, voz_colosal: 0.25, voz_bramido: 0.36, voz_rugido: 0.3, voz_rugido_agudo: 0.9, voz_gruñido: 0.42, voz_graznido: 1.7, voz_trompeta: 1.4, voz_chillido: 1, voz_chirrido: 1, voz_siseo: 0.5, voz_bufido: 0.4 };
 
 export { rnd, pick };

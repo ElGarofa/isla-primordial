@@ -1,0 +1,2 @@
+// Objetos con modelo 3D generado en public/models/objetos/<id>.glb (Higgsfield/Tripo, optimizados con meshopt + WebP). Los demás usan la malla procedural.
+export const OBJETOS = ["antorcha", "arco", "cantimplora", "cuchillo_diente", "cuchillo_hueso", "cuchillo_obsidiana", "cuchillo_piedra", "fogata", "garrote", "hacha_piedra", "honda", "jabalina", "lanza", "lanza_cuerno", "lanza_hueso", "martillo_piedra", "maza_piedra", "pico_piedra", "punzon_hueso"];

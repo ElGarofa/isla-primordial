@@ -29,9 +29,9 @@ export class SkinBuilder {
 
   /**
    * Tubo elíptico. pts: Vector3[] (puntos de control), rx/ry: semiejes por punto, owners: nombres de hueso por segmento (o un solo nombre).
-   * opciones: sides, sub, part, uscale, vscale, cap0/cap1 (cerrar extremos), roll
+   * opciones: sides, sub, part, uscale, vscale, cap0/cap1 (cerrar extremos), lateral (marco fijo con rx a lo largo de +x, para cadenas en el plano sagital)
    */
-  tube({ pts, rx, ry, owners, sides = 10, sub = 3, part = PART.cuerpo, uscale = 2, vscale = 1.5, cap0 = true, cap1 = true, spec = 'cuerpo' }) {
+  tube({ pts, rx, ry, owners, sides = 10, sub = 3, part = PART.cuerpo, uscale = 2, vscale = 1.5, cap0 = true, cap1 = true, spec = 'cuerpo', lateral = false }) {
     const n = pts.length;
     const own = (Array.isArray(owners) ? owners : new Array(n - 1).fill(owners)).map((o) => this.bi[o]);
     if (own.some((o) => o == null)) throw new Error(`Hueso desconocido en tubo: ${owners}`);
@@ -47,8 +47,8 @@ export class SkinBuilder {
       const ax = rx[s] + (rx[s + 1] - rx[s]) * sm, ay = ry[s] + (ry[s + 1] - ry[s]) * sm;
       if (prev) arc += c.distanceTo(prev); prev = c.clone();
       _d.copy(d);
-      const ref = Math.abs(_d.y) > 0.9 ? UPZ : UPY;
-      _r.crossVectors(ref, _d).normalize(); _u.crossVectors(_d, _r).normalize();
+      if (lateral) { _r.set(1, 0, 0); _u.crossVectors(_d, _r).normalize(); } // cadena sagital: el eje lateral es siempre +x (sin vuelcos de marco al cruzar la vertical)
+      else { const ref = Math.abs(_d.y) > 0.9 ? UPZ : UPY; _r.crossVectors(ref, _d).normalize(); _u.crossVectors(_d, _r).normalize(); }
       const skin = this.skinAt(own, s, u);
       const start = this.pos.length / 3; ringStarts.push(start);
       // escamas isótropas: el reparto de U alrededor sigue el perímetro local; la costura queda en el vientre
@@ -71,6 +71,50 @@ export class SkinBuilder {
     };
     if (cap0) cap(ringStarts[0], pts[0], null, true, this.skinAt(own, 0, 0));
     if (cap1) cap(ringStarts[total], pts[n - 1], null, false, this.skinAt(own, n - 2, 1));
+    return this;
+  }
+
+  /**
+   * Lámina fina de dos caras (membranas de ala, velas de cresta, aletas): tira entre dos polilíneas `lead` y `trail` con el mismo número de puntos.
+   * owners[i] = hueso del tramo i (como en `tube`); `th` = grosor; `eje` = dirección del grosor ('y' lámina horizontal, 'x' lámina vertical);
+   * `curva` = abombado (fracción de la cuerda) en el eje del grosor; `filas` = puntos a lo ancho.
+   */
+  sheet({ lead, trail, owners, th = 0.006, eje = 'y', curva = 0, sub = 3, filas = 4, part = PART.membrana, uscale = 1, vscale = 1 }) {
+    const n = lead.length;
+    const own = (Array.isArray(owners) ? owners : new Array(n - 1).fill(owners)).map((o) => this.bi[o]);
+    if (own.some((o) => o == null)) throw new Error(`Hueso desconocido en lámina: ${owners}`);
+    const mk = (pts) => (n > 2 ? new THREE.CatmullRomCurve3(pts, false, 'centripetal') : new THREE.LineCurve3(pts[0], pts[1]));
+    const cl = mk(lead), ct = mk(trail), total = (n - 1) * sub, cols = [];
+    let arc = 0, prev = null;
+    for (let i = 0; i <= total; i++) {
+      const s = Math.min(n - 2, Math.floor(i / sub)), u = i === total ? 1 : (i - s * sub) / sub, t = Math.min(1, (s + u) / (n - 1));
+      const a = cl.getPoint(t), b = ct.getPoint(t), skin = this.skinAt(own, s, u), chord = a.distanceTo(b);
+      if (prev) arc += a.distanceTo(prev); prev = a.clone();
+      const rows = [];
+      for (let j = 0; j < filas; j++) {
+        const f = j / (filas - 1), p = a.clone().lerp(b, f), off = curva * chord * Math.sin(Math.PI * f);
+        if (eje === 'x') p.x += off; else p.y += off;
+        const hi = p.clone(), lo = p.clone();
+        if (eje === 'x') { hi.x += th / 2; lo.x -= th / 2; } else { hi.y += th / 2; lo.y -= th / 2; }
+        rows.push([this.vert(hi, f * chord * uscale, arc * vscale, part, skin), this.vert(lo, f * chord * uscale, arc * vscale, part, skin)]);
+      }
+      cols.push(rows);
+    }
+    // sentido de las caras: la cara "superior" debe mirar hacia +eje
+    const P = (k) => new THREE.Vector3(this.pos[k * 3], this.pos[k * 3 + 1], this.pos[k * 3 + 2]);
+    const q0 = P(cols[0][0][0]), q1 = P(cols[1][0][0]), q2 = P(cols[0][1][0]);
+    const nn = new THREE.Vector3().subVectors(q1, q0).cross(new THREE.Vector3().subVectors(q2, q0));
+    const flip = (eje === 'x' ? nn.x : nn.y) < 0;
+    for (let i = 0; i < total; i++) for (let j = 0; j < filas - 1; j++) {
+      const a = cols[i][j], b = cols[i + 1][j], c = cols[i][j + 1], d = cols[i + 1][j + 1];
+      for (const k of [0, 1]) { // 0 = cara superior, 1 = inferior (sentido contrario)
+        const up = (k === 0) !== flip;
+        if (up) this.idx.push(a[k], b[k], c[k], b[k], d[k], c[k]); else this.idx.push(a[k], c[k], b[k], b[k], c[k], d[k]);
+      }
+    }
+    // cierre de los bordes (borde de ataque, de fuga y puntas) para que no se vea hueco al mirar de canto
+    for (let i = 0; i < total; i++) for (const j of [0, filas - 1]) { const a = cols[i][j], b = cols[i + 1][j]; this.idx.push(a[0], a[1], b[0], b[0], a[1], b[1], a[0], b[0], a[1], b[0], b[1], a[1]); }
+    for (const i of [0, total]) for (let j = 0; j < filas - 1; j++) { const a = cols[i][j], c = cols[i][j + 1]; this.idx.push(a[0], a[1], c[0], c[0], a[1], c[1], a[0], c[0], a[1], c[0], c[1], a[1]); }
     return this;
   }
 

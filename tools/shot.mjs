@@ -5,7 +5,7 @@
 //   node tools/shot.mjs --list                          # lista los presets disponibles
 //   node tools/shot.mjs --preset integracion_playa_dia  # uno o varios (separados por coma)
 //   node tools/shot.mjs --all --out shots/ronda1        # todos los presets
-// Opciones: --w 1280 --h 720 --frames 12 --hour 10 --ui (incluye HUD) --renderall --quality high|medium|low --url http://...
+// Opciones: --q 'k=v&k2=v2' (parámetros de URL extra) --w 1280 --h 720 --frames 12 --hour 10 --ui (incluye HUD) --renderall --quality high|medium|low --url http://...
 // Salida: PNGs + report.json (draw calls, triángulos, errores de consola). Código de salida 1 si hay errores de página.
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -67,6 +67,8 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 const q = new URLSearchParams({ debug: '1' });
 if (!opt('ui')) q.set('ui', '0');
 if (opt('quality')) q.set('quality', opt('quality'));
+// --q 'clave=valor&otra=1': parámetros extra de URL (p. ej. --q suelos=0 para forzar las capas del suelo generadas por código)
+if (typeof opt('q') === 'string') for (const [k, v] of new URLSearchParams(opt('q'))) q.set(k, v);
 await page.goto(`${baseUrl}/?${q}`);
 await page.waitForFunction(() => window.__game && window.__game.ready, null, { timeout: 300000 });
 

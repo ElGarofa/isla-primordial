@@ -184,7 +184,7 @@ export const CATALOGO = FILAS.trim().split('\n').map((l) => {
   e.tamano = parseFloat(e.tamano); e.masa = parseFloat(e.masa);
   e.estado = 'catalogado';
   e.era = /Mioceno|Cenozoico/.test(e.periodo) ? 'cenozoico' : /Triásico/.test(e.periodo) ? 'triasico' : /Jurásico/.test(e.periodo) ? 'jurasico' : 'cretacico';
-  e.tipoAnimal = /Pterosaurio/.test(e.grupo) ? 'pterosaurio' : /Reptil marino/.test(e.grupo) ? 'reptil_marino' : /Cocodrilomorfo/.test(e.grupo) ? 'cocodrilomorfo' : /Pez|Anfibio|Mamífero/.test(e.grupo) ? 'otro' : /Ave basal/.test(e.grupo) ? 'dinosaurio_ave' : 'dinosaurio';
+  e.tipoAnimal = /Pterosaurio/.test(e.grupo) ? 'pterosaurio' : /Reptil marino/.test(e.grupo) ? 'reptil_marino' : /Cocodrilomorfo/.test(e.grupo) ? 'cocodrilomorfo' : /Pez/.test(e.grupo) ? 'pez' : /Anfibio|Mamífero/.test(e.grupo) ? 'otro' : /Ave basal/.test(e.grupo) ? 'dinosaurio_ave' : 'dinosaurio';
   return e;
 });
 export const POR_ID = Object.fromEntries(CATALOGO.map((e) => [e.id, e]));
@@ -258,7 +258,7 @@ export const DETALLE = {
     habilidades: ['escaneo_vigia', 'llamada_alerta', 'huida_coordinada'],
     habParams: { escaneo_vigia: { radio: 85, cada: 9, falsosPositivos: 0.06 }, llamada_alerta: { radio: 220, cd: 16, solo: ['depredador_mayor', 'jugador'] } },
     vulnerabilidades: 'sin defensas activas salvo huida y vigilancia', interacciones: 'Presa de grandes depredadores. Su cresta hueca amplifica llamadas de baja frecuencia (hipótesis con modelos de resonancia).',
-    cosecha: [['carne_cruda', 8], ['cuero', 4], ['hueso', 4]], doma: { max: 6, nota: 'Rebaño tranquilo y fuerte: se domestica con paciencia y alimento vegetal, y acepta silla de transporte y alforjas.', riesgo: 'Su vigía lo delata todo: si lo asustas, avisa a todo el rebaño. Sin comida ni descanso, deja de seguirte.', comida: { hoja_grande: 0.25, baya: 0.15, liana: 0.1 }, hab: { seg: 240 }, ofrendas: 5, manejo: { nivel: 0, equipo: 'cabestro' }, cuidado: { dias: 2, biomas: ['pradera', 'selva'] } }, montura: { jinete: true, tipos: ['transporte'], carga: { items: ['alforjas', 'bolsa_carga'], mul: 1 }, proteccion: false, arnes: true, ancla: [0, 3.25, 0.25], nota: 'Dorso ancho y paso firme: silla de transporte y alforjas.' },
+    cosecha: [['carne_cruda', 8], ['cuero', 4], ['hueso', 4]], doma: { max: 6, nota: 'Rebaño tranquilo y fuerte: se domestica con paciencia y alimento vegetal, y acepta silla de transporte y alforjas.', riesgo: 'Su vigía lo delata todo: si lo asustas, avisa a todo el rebaño. Sin comida ni descanso, deja de seguirte.', comida: { hoja_grande: 0.25, baya: 0.15, liana: 0.1 }, hab: { seg: 240 }, ofrendas: 5, manejo: { nivel: 0, equipo: 'cabestro' }, cuidado: { dias: 2, biomas: ['pradera', 'selva'] } }, montura: { jinete: true, tipos: ['transporte'], carga: { items: ['alforjas', 'bolsa_carga'], mul: 1 }, proteccion: false, arnes: true, ancla: [0, 3.25, -0.3], nota: 'Dorso ancho y paso firme: silla de transporte y alforjas.' },
     reproduccion: 'huevos en nido; no implementada', confianza: { anatomia: 'alta', comportamiento: 'media' },
     licencia: 'NO es el Parasaur de ARK: aquí solo tiene vigilancia por sentidos reales (oído fino, campo visual amplio) y llamada de alarma. Sin detección “mágica” de radio completo; depende de oclusión, ruido y distancia, con falsos positivos.',
   },

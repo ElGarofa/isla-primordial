@@ -4,9 +4,6 @@ import { getHeight } from './heightfield.js';
 import { CONFIG } from '../core/config.js';
 import { createWaterNormal } from './textures.js';
 
-const INNER = CONFIG.world.size * 1.25; // lado de la malla fina (m)
-const CELL = 5;
-
 export function createWater(ctx) {
   const seaLevel = CONFIG.world.seaLevel;
   const normalTex = createWaterNormal(256);
@@ -54,38 +51,43 @@ export function createWater(ctx) {
   mat.customProgramCacheKey = () => 'agua-v1';
   ctx.lighting?.setupMaterial?.(mat);
 
-  // malla fina con profundidad real por vértice
-  const n = Math.round(INNER / CELL);
-  const stride = n + 1;
-  const pos = new Float32Array(stride * stride * 3);
-  const depth = new Float32Array(stride * stride);
-  for (let j = 0; j <= n; j++) {
-    for (let i = 0; i <= n; i++) {
-      const x = -INNER / 2 + i * CELL, z = -INNER / 2 + j * CELL;
-      const k = j * stride + i;
-      pos[k * 3] = x; pos[k * 3 + 1] = seaLevel; pos[k * 3 + 2] = z;
-      depth[k] = seaLevel - getHeight(x, z); // >0 bajo el agua, <0 sobre tierra
-    }
-  }
-  const idx = new Uint32Array(n * n * 6);
-  let p = 0;
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-    const a = j * stride + i, b = (j + 1) * stride + i, c = a + 1, d = b + 1;
-    idx[p++] = a; idx[p++] = b; idx[p++] = c; idx[p++] = b; idx[p++] = d; idx[p++] = c;
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('aDepth', new THREE.BufferAttribute(depth, 1));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
-  g.computeVertexNormals();
-  g.computeBoundingSphere();
-  const inner = new THREE.Mesh(g, mat);
-  inner.name = 'mar_cercano';
-  inner.renderOrder = 2;
-  ctx.scene.add(inner);
+  const SEGS = 32;
+  const _idxFull = (() => { const idx = new Uint32Array(SEGS * SEGS * 6); let p = 0; const st = SEGS + 1; for (let j = 0; j < SEGS; j++) for (let i = 0; i < SEGS; i++) { const a = j * st + i, b = (j + 1) * st + i, c = a + 1, d = b + 1; idx[p++] = a; idx[p++] = b; idx[p++] = c; idx[p++] = b; idx[p++] = d; idx[p++] = c; } return idx; })();
+  const _idxQuad = new Uint32Array([0, 2, 1, 2, 3, 1]);
+  const _normalFull = new Float32Array((SEGS + 1) * (SEGS + 1) * 3); for (let k = 0; k < _normalFull.length; k += 3) _normalFull[k + 1] = 1;
+  const _normalQuad = new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]);
 
-  // mar profundo hasta el horizonte: 4 franjas alrededor de la malla fina (sin solaparla: la transparencia se sumaría y se vería un rectángulo)
-  const H = INNER / 2, W = 6000;
+  /** Parche de agua para un nodo del terreno: cuadrícula con la profundidad real por vértice, o un solo cuadrado si todo el nodo es mar profundo. */
+  function build(x0, z0, size, profundo) {
+    const g = new THREE.BufferGeometry();
+    if (profundo) {
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, seaLevel, 0, size, seaLevel, 0, 0, seaLevel, size, size, seaLevel, size]), 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(_normalQuad, 3));
+      g.setAttribute('aDepth', new THREE.BufferAttribute(new Float32Array(4).fill(60), 1));
+      g.setIndex(new THREE.BufferAttribute(_idxQuad, 1));
+    } else {
+      const st = SEGS + 1, step = size / SEGS;
+      const pos = new Float32Array(st * st * 3), depth = new Float32Array(st * st);
+      for (let j = 0; j < st; j++) for (let i = 0; i < st; i++) {
+        const k = j * st + i, x = x0 + i * step, z = z0 + j * step;
+        pos[k * 3] = i * step; pos[k * 3 + 1] = seaLevel; pos[k * 3 + 2] = j * step;
+        depth[k] = seaLevel - getHeight(x, z); // >0 bajo el agua, <0 sobre tierra
+      }
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(_normalFull, 3));
+      g.setAttribute('aDepth', new THREE.BufferAttribute(depth, 1));
+      g.setIndex(new THREE.BufferAttribute(_idxFull, 1));
+    }
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(size / 2, 0, size / 2), size * 0.72);
+    const m = new THREE.Mesh(g, mat);
+    m.position.set(x0, 0, z0);
+    m.renderOrder = 2;
+    m.matrixAutoUpdate = false; m.updateMatrix();
+    return m;
+  }
+
+  // mar hasta el horizonte alrededor del cuadrado del mundo (el cuadrado lo cubren los nodos del terreno; las franjas no se solapan con él: la transparencia se sumaría)
+  const H = CONFIG.world.size / 2, W = 40000;
   const strips = [[-W, -W, W, -H], [-W, H, W, W], [-W, -H, -H, H], [H, -H, W, H]]; // x0,z0,x1,z1
   const sp = [], si = [];
   strips.forEach(([x0, z0, x1, z1], k) => {
@@ -106,7 +108,8 @@ export function createWater(ctx) {
 
   return {
     level: seaLevel,
-    mesh: inner,
+    material: mat,
+    build,
     getDepth: (x, z) => Math.max(0, seaLevel - getHeight(x, z)),
     /** Altura aproximada del oleaje (visual puramente normal-map; la amplitud real es mínima). */
     getWaveHeight: (x, z, t = 0) => 0.05 * Math.sin(x * 0.08 + t * 0.9) * Math.cos(z * 0.06 + t * 0.7),

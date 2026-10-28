@@ -18,6 +18,11 @@ function colorizer(pal) {
       r = mix(c0[0], c1[0], t); g = mix(c0[1], c1[1], t); b = mix(c0[2], c1[2], t);
       const vein = 0.5 + 0.5 * Math.sin(y * 31 + z * 7); const m = 1 - 0.16 * vein; r *= m; g *= m; b *= m;
     }
+    else if (part === PART.membrana && pal.membrana) { // membranas de ala: tono propio con venas finas y borde más oscuro
+      const t = sstep(-0.6, 0.6, ny), c0 = pal.membrana, c1 = pal.membrana1 ?? c0;
+      const vena = 0.5 + 0.5 * Math.sin(x * 38 + z * 3), m = 1 - 0.12 * vena;
+      r = mix(c1[0], c0[0], t) * m; g = mix(c1[1], c0[1], t) * m; b = mix(c1[2], c0[2], t) * m;
+    }
     else if (part === PART.gola) {
       const rad = Math.min(1, Math.hypot(x, y - (pal.golaY ?? 2.2)) / (pal.golaR ?? 0.85));
       const c0 = pal.gola0, c1 = pal.gola1;

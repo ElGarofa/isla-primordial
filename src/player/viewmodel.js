@@ -2,6 +2,8 @@
 // Se renderiza en una escena aparte (ctx.viewmodel) después del mundo, con luces propias que copian las del sol y el ambiente.
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rng.js';
+import { cargarObjetos3D, ajustarAHerramienta } from './objetos3d.js';
+import { materialesManos, manoAgarre, puno, antebrazo } from './manos.js';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -50,17 +52,6 @@ function fibreTexture() {
     for (let i = 0; i < 40; i++) { g.strokeStyle = rnd() < 0.5 ? 'rgba(80,58,28,0.5)' : 'rgba(230,205,150,0.45)'; g.lineWidth = 1.2; const y = rnd() * s; g.beginPath(); g.moveTo(0, y); g.lineTo(s, y + (rnd() - 0.5) * 10); g.stroke(); }
   });
 }
-function skinTexture() {
-  const rnd = mulberry32(33);
-  return canvasTexture(128, (g, s) => {
-    g.fillStyle = '#b07a58'; g.fillRect(0, 0, s, s);
-    const img = g.getImageData(0, 0, s, s), d = img.data;
-    for (let i = 0; i < d.length; i += 4) { const n = (rnd() - 0.5) * 16; d[i] += n; d[i + 1] += n * 0.8; d[i + 2] += n * 0.7; }
-    g.putImageData(img, 0, 0);
-    for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(120,70,50,${0.05 + rnd() * 0.1})`; g.beginPath(); g.arc(rnd() * s, rnd() * s, 1 + rnd() * 3, 0, 6.3); g.fill(); }
-  });
-}
-
 // ---------------------------------------------------------------------------------------------- geometrías
 const rndJ = mulberry32(77);
 function jitter(geo, amt) {
@@ -107,83 +98,22 @@ export function createViewmodel(ctx) {
   scene.add(sunL, sunL.target, hemiL, torchL);
 
   const M = {
-    skin: new THREE.MeshStandardMaterial({ color: 0xffffff, map: skinTexture(), roughness: 0.68, metalness: 0, emissive: 0x2a0d06, emissiveIntensity: 0.18 }),
-    cloth: new THREE.MeshStandardMaterial({ color: 0x6a5238, roughness: 0.95, map: fibreTexture() }),
     wood: new THREE.MeshStandardMaterial({ color: 0xffffff, map: woodTexture(), roughness: 0.82 }),
     stone: new THREE.MeshStandardMaterial({ color: 0xffffff, map: stoneTexture(), roughness: 0.92, flatShading: true }),
     fibre: new THREE.MeshStandardMaterial({ color: 0xffffff, map: fibreTexture(), roughness: 0.95 }),
     ember: new THREE.MeshStandardMaterial({ color: 0x2a1408, emissive: 0xff6a1a, emissiveIntensity: 2.2, roughness: 0.9 }),
     char: new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 1 }),
     bone: new THREE.MeshStandardMaterial({ color: 0xe6dfc8, roughness: 0.6, flatShading: true }),
+    obsidian: new THREE.MeshStandardMaterial({ color: 0x15131a, roughness: 0.18, metalness: 0, flatShading: true }),
     horn: new THREE.MeshStandardMaterial({ color: 0xcdbb94, roughness: 0.55, flatShading: true }),
     leather: new THREE.MeshStandardMaterial({ color: 0x7a4e2c, roughness: 0.9 }),
   };
   M.wood.map.repeat.set(1, 2);
   for (const m of Object.values(M)) ctx.lighting?.setupMaterial?.(m, { fog: false });
+  const MM = materialesManos(); // piel con poros, uñas y cuero (manos.js)
+  for (const m of Object.values(MM)) ctx.lighting?.setupMaterial?.(m, { fog: false });
 
-  // ------------------------------------------------------------------------------------------ mano
-  /** Mano que empuña un mango vertical (eje Y). La palma queda hacia +Z (hacia la cámara); `radio` = grosor del mango. */
-  function makeHand(radio = 0.019, mirror = false) {
-    const h = new THREE.Group();
-    const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), M.skin);
-    palm.scale.set(0.046, 0.054, 0.025); palm.position.set(0.004, 0, radio + 0.02);
-    h.add(palm);
-    const R = radio + 0.0105;
-    const fingers = [[0.034, 0.0102, 1.0], [0.0115, 0.0108, 1.02], [-0.0105, 0.0102, 1.0], [-0.031, 0.0092, 0.94]];
-    for (const [y, t, k] of fingers) {
-      const g = new THREE.TorusGeometry(R * k, t, 8, 20, Math.PI * 1.5);
-      g.rotateZ(Math.PI * 0.75);
-      g.rotateX(Math.PI / 2);
-      g.translate(0, y, 0);
-      const m = new THREE.Mesh(g, M.skin);
-      h.add(m);
-      // nudillo
-      const kn = new THREE.Mesh(new THREE.SphereGeometry(t * 1.12, 8, 6), M.skin);
-      kn.position.set(-R * k * 0.78, y, R * k * 0.62);
-      h.add(kn);
-    }
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0115, 0.04, 4, 8), M.skin);
-    thumb.position.set(-0.026, 0.048, radio + 0.015);
-    thumb.rotation.set(0.2, 0.5, 1.15);
-    h.add(thumb);
-    if (mirror) h.scale.x = -1;
-    return h;
-  }
-
-
-  /** Puño de guardia (sin herramienta). Marco: -Z hacia delante, +Y arriba; el antebrazo sale hacia +Z. */
-  function makeFist(mirror = false) {
-    const h = new THREE.Group();
-    const back = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), M.skin);
-    back.scale.set(0.043, 0.032, 0.056); back.position.set(0, 0, 0.012);
-    h.add(back);
-    // bloque de dedos plegados: dos filas de falanges (arriba los nudillos, abajo las puntas) y surcos entre dedos
-    const row = (y, z, r, len) => { const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 10), M.skin); m.rotation.z = Math.PI / 2; m.position.set(0, y, z); h.add(m); };
-    row(0.009, -0.056, 0.0155, 0.058);
-    row(-0.011, -0.052, 0.0135, 0.056);
-    for (let i = 0; i < 3; i++) {
-      const g = new THREE.Mesh(new THREE.BoxGeometry(0.0016, 0.03, 0.02), M.cloth);
-      g.position.set(-0.0215 + i * 0.0215, 0.0, -0.063); h.add(g);
-    }
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0125, 0.034, 4, 8), M.skin);
-    thumb.position.set(-0.03, 0.026, -0.03); thumb.rotation.set(1.45, 0.1, 0.5);
-    h.add(thumb);
-    h.userData.wrist = new THREE.Vector3(0.002, -0.004, 0.075);
-    h.userData.fist = true;
-    if (mirror) h.scale.x = -1;
-    return h;
-  }
-
-  // brazos (antebrazo cónico + puño de tela)
-  function makeArm() {
-    const g = new THREE.Group();
-    const geo = new THREE.CylinderGeometry(0.027, 0.04, 1, 14, 1, false);
-    const arm = new THREE.Mesh(geo, M.skin);
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.037, 0.07, 14, 1, false), M.cloth);
-    g.add(arm, cuff);
-    g.userData = { arm, cuff };
-    return g;
-  }
+  // manos y antebrazos: ver manos.js
   const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3(), _q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
   function placeArm(armGroup, elbow, wrist) {
     _d.copy(wrist).sub(elbow);
@@ -252,6 +182,14 @@ export function createViewmodel(ctx) {
       g.add(stoneMesh(jitter(extrudePoly([[0.012, 0.12], [0.03, 0.2], [0.012, 0.3], [-0.004, 0.33], [-0.02, 0.2], [-0.012, 0.12]], 0.012, 0.003), 0.002)));
       g.add(lash(0.13, 0.017, 0.005), lash(0.145, 0.017, 0.005));
       g.userData.tip = new THREE.Vector3(0, 0.33, 0);
+      return g;
+    },
+    cuchillo_obsidiana() {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shaft(-0.1, 0.13, 0.016, 0.0145), M.wood));
+      g.add(new THREE.Mesh(jitter(extrudePoly([[0.011, 0.12], [0.026, 0.2], [0.01, 0.31], [0, 0.345], [-0.018, 0.21], [-0.011, 0.12]], 0.009, 0.002), 0.0015), M.obsidian));
+      g.add(lash(0.13, 0.017, 0.005), lash(0.145, 0.017, 0.005));
+      g.userData.tip = new THREE.Vector3(0, 0.345, 0);
       return g;
     },
     cuchillo_hueso() {
@@ -358,7 +296,7 @@ export function createViewmodel(ctx) {
   const KIND = {
     hacha_piedra: 'hacha', pico_piedra: 'hacha', martillo_piedra: 'hacha', maza_piedra: 'hacha', garrote: 'hacha',
     lanza: 'lanza', lanza_hueso: 'lanza', lanza_cuerno: 'lanza', jabalina: 'lanza',
-    cuchillo_piedra: 'cuchillo', cuchillo_hueso: 'cuchillo', cuchillo_diente: 'cuchillo', punzon_hueso: 'cuchillo',
+    cuchillo_piedra: 'cuchillo', cuchillo_hueso: 'cuchillo', cuchillo_diente: 'cuchillo', cuchillo_obsidiana: 'cuchillo', punzon_hueso: 'cuchillo',
     antorcha: 'antorcha', arco: 'arco', honda: 'honda',
   };
   const kindOf = (item) => (item && BUILD[item] ? KIND[item] ?? 'puno' : 'puno');
@@ -368,11 +306,11 @@ export function createViewmodel(ctx) {
   scene.add(root);
   const rigR = new THREE.Group(), rigL = new THREE.Group();
   root.add(rigR, rigL);
-  const gripR = makeHand(0.019, false), gripL = makeHand(0.019, true), fistR = makeFist(false), fistL = makeFist(true);
+  const gripR = manoAgarre(MM, 0.019, false), gripL = manoAgarre(MM, 0.019, true), fistR = puno(MM, false), fistL = puno(MM, true);
   gripR.userData.wrist = new THREE.Vector3(0.012, -0.075, 0.062); gripL.userData.wrist = new THREE.Vector3(-0.012, -0.075, 0.062);
   let handR = gripR, handL = gripL;
   rigR.add(gripR); rigL.add(gripL);
-  const armR = makeArm(), armL = makeArm();
+  const armR = antebrazo(MM), armL = antebrazo(MM);
   root.add(armR, armL);
   const toolSlot = new THREE.Group();
   rigR.add(toolSlot);
@@ -380,6 +318,29 @@ export function createViewmodel(ctx) {
   rigR.add(fistR); rigL.add(fistL);
 
   const tools = {};
+  // modelos 3D generados (objetos3d.js): se cargan en segundo plano; mientras tanto (o si faltan) se ve la herramienta procedural
+  const glb = { modelos: {}, errores: {}, ajustes: {} };
+  function construir(key) {
+    const proc = BUILD[key]();
+    const mod = glb.modelos[key];
+    if (!mod) return proc;
+    try {
+      const g = ajustarAHerramienta(key, mod, proc);
+      glb.ajustes[key] = g.userData.ajuste;
+      proc.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
+      return g;
+    } catch (e) { glb.errores[key] = String(e?.message ?? e); return proc; }
+  }
+  const listo = cargarObjetos3D().then(({ modelos, errores }) => {
+    Object.assign(glb.modelos, modelos); Object.assign(glb.errores, errores);
+    for (const m of Object.values(modelos)) m.traverse((o) => { if (o.isMesh && o.material) ctx.lighting?.setupMaterial?.(o.material, { fog: false }); });
+    for (const k of Object.keys(tools)) { // las ya construidas con malla procedural se rehacen con el modelo
+      if (!modelos[k]) continue;
+      const vis = tools[k].visible;
+      toolSlot.remove(tools[k]);
+      tools[k] = construir(k); toolSlot.add(tools[k]); tools[k].visible = vis;
+    }
+  }).catch((e) => { glb.errores._carga = String(e?.message ?? e); });
   const state = {
     item: null, shown: null, equipK: 1, equipT: 0, pending: undefined,
     attack: null, punchSide: 0, t: 0, phase: 0, bobAmp: 0, sprintK: 0, kickY: 0, kickV: 0,
@@ -404,7 +365,7 @@ export function createViewmodel(ctx) {
     state.shown = item;
     const key = BUILD[item] ? item : null;
     if (key) {
-      tools[key] ??= (() => { const t = BUILD[key](); toolSlot.add(t); return t; })();
+      tools[key] ??= (() => { const t = construir(key); toolSlot.add(t); return t; })();
       tools[key].visible = true;
     }
     // sin herramienta: dos puños; con herramienta: la derecha empuña (y la izquierda ayuda en la lanza)
@@ -608,5 +569,5 @@ export function createViewmodel(ctx) {
 
   /** Equipa al instante (sin animación): lo usan las capturas de depuración. */
   function equipNow(item) { state.item = item ?? null; state.pending = undefined; state.raise = false; state.equipK = 0; setTool(state.item); }
-  return { scene, camera, update, equipNow, get tool() { return state.shown; }, state };
+  return { scene, camera, update, equipNow, get tool() { return state.shown; }, state, listo, objetos3d: glb, herramienta: (k) => tools[k] ?? null };
 }

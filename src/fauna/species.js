@@ -4,6 +4,7 @@ import { SkinBuilder, makeSkeleton, PART, V } from './builder.js';
 import { colorizer } from './color.js';
 import { buildRex, buildParasaur, buildStego, buildAnkylo, buildGallimimus } from './modelos.js';
 import { DETALLE, POR_ID, marcarImplementadas } from './catalogo.js';
+import { generarFamilias, engancharEstaticos } from './familias/index.js';
 
 export { colorizer };
 
@@ -239,7 +240,21 @@ export const SPECIES = {
   parasaurolophus: {
     id: 'parasaurolophus', nombre: 'Parasaurolophus', skin: 'parasaur', uvK: 4, tono: 1.0, scale: 1, tipo: 'herbivoro', vidaMax: 260, anim: 'hadrosaurio',
     pal: { dorso: [0.4, 0.38, 0.22], vientre: [0.7, 0.64, 0.45], raya: { freq: 5, warp: 3, th: 0.55, color: [0.2, 0.16, 0.1], amp: 0.6 }, cresta: [0.6, 0.3, 0.16], cresta1: [0.38, 0.2, 0.12], aoY: 1.4, ojo: [0.8, 0.55, 0.1] },
-    build() { return buildParasaur({ pal: this.pal }); },
+    build() { return buildParasaur({ pal: this.pal }); }, // malla procedural: respaldo si el GLB no carga (o con ?glb=0)
+    // Modelo 3D real (GLB con esqueleto y animaciones). Origen y licencia: public/models/fauna/LICENCIAS.md · docs/MODELOS_3D.md
+    glb: {
+      url: 'models/fauna/parasaurolophus.glb', escala: 0.74, subdividir: 1, suavidad: 0.6, uvM: 0.5,
+      zonas: { Green: 'cuerpo', LightYellow: 'vientre', LightGreen: 'garra', Red: 'cresta' }, // material del modelo → tipo de color de la paleta
+      ojos: [{ hueso: 'Head', c: [0.325, 5.5, 3.8], r: [0.05, 0.07, 0.07] }], // coordenadas de reposo del modelo; el original no trae ojos
+      // esferas de impacto ajustadas a la malla en movimiento (grupos de huesos → esferas); sustituyen a `hit` (más abajo, del modelo procedural) solo si el GLB carga
+      hit: [
+        { huesos: ['Body', 'Hips', 'Torso', 'Back', 'Shoulders', 'root'], n: 2 }, { huesos: ['Neck'] }, { huesos: ['Head', 'Head_end'] },
+        { huesos: ['Tail1', 'Tail2', 'Tail3'] }, { huesos: ['Tail4', 'Tail5', 'Tail5_end'] },
+        { huesos: ['BackUpLeg.R', 'BackLowLeg.R', 'BackFoot.R', 'BackLeg.R'], simetrico: false }, { huesos: ['BackUpLeg.L', 'BackLowLeg.L', 'BackFoot.L', 'BackLeg.L'], simetrico: false },
+        { huesos: ['FrontUpLeg.R', 'FrontLowLeg.R', 'FrontFoot.R', 'FrontLeg.R'], simetrico: false }, { huesos: ['FrontUpLeg.L', 'FrontLowLeg.L', 'FrontFoot.L', 'FrontLeg.L'], simetrico: false },
+      ],
+      huesos: { cuello: ['Neck'], cabeza: 'Head', torso: ['Torso'], pies: ['BackFoot.R', 'BackFoot.L', 'FrontFoot.R', 'FrontFoot.L'] },
+    },
     roughness: 0.8, hips: 2.15, hit: [[0, 2.2, -0.4, 1.1], [0, 2.2, 0.9, 1.05], [0, 2.5, 2.0, 0.7], [0, 3.0, 3.2, 0.5], [0, 3.4, 3.1, 0.4], [0, 1.9, -2.5, 0.65], [0, 1.7, -4.5, 0.4]],
     vel: { walk: 1.6, run: 6.6 }, cycle: { walk: 3.0, run: 5.8 }, stance: 0.62, step: 0.24, radius: 1.6,
     ai: { huye: 1, huyeDist: 38, manada: true }, rugido: 0.5,
@@ -269,6 +284,10 @@ export const SPECIES = {
     ai: { huye: 1, huyeDist: 34, manada: true }, rugido: 0.4,
   },
 };
+
+// Especies generadas por familias (bípedos, cuadrúpedos…): se añaden a SPECIES/DETALLE/COSECHA y se resuelven las relaciones ecológicas.
+generarFamilias(SPECIES, DETALLE);
+engancharEstaticos(SPECIES);
 
 // Los datos biológicos y de comportamiento salen del catálogo (única fuente de verdad); aquí se convierten en parámetros de IA.
 for (const sp of Object.values(SPECIES)) {

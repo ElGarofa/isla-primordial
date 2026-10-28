@@ -139,7 +139,7 @@ function reaccionar(c, playing, now) {
   if (hot && ai.defiende && hot.conf >= 0.3) { c.setState('defend'); return; }
   if (pred && c.cdCaza <= 0) {
     if (c.presa && vivo(c.presa.c) && now - c.presa.t < 4) { c.tgt = { c: c.presa.c }; c.tgtJugador = false; c.setState('alert'); c.alertaT = 0; return; }
-    if (playing && c.sosp >= 1 && !c.grace()) {
+    if (playing && c.sosp >= 1 && !c.grace() && c.alcanza(c.ctx.player.position.x, c.ctx.player.position.z)) {
       // un depredador habituado ya no te teme ni defiende su territorio contra ti, pero el hambre sigue mandando
       const quiere = depredadorHabituado(c) ? !noCazaJugador(c)
         : ai.agresivo === true && (c.hambre >= 0.2 || c.pDist < 30) || c.hambre >= (sp.hambre?.caza ?? 0.45) || c.pDist < 14 || c.provocado > 0;
@@ -207,6 +207,15 @@ export function pensar(c, dt) {
     case 'wander': {
       reaccionar(c, playing, now);
       if (c.state !== 'wander') break;
+      // los animales grandes y tranquilos no pasan por encima del jugador: si lo tienen delante y cerca, eligen otro rumbo
+      // (el pisoteo sigue alcanzando a quien se mete bajo sus patas, pero un saurópodo que pasea no aplasta a quien está quieto)
+      if (playing && ctx.player && sp.scale > 0.9) {
+        const pp = ctx.player.position, dx = pp.x - c.position.x, dz = pp.z - c.position.z, d = Math.hypot(dx, dz);
+        if (d < sp.radius + 5 && (dx * Math.sin(c.yaw) + dz * Math.cos(c.yaw)) / Math.max(0.01, d) > 0.35) {
+          const a = Math.atan2(-dx, -dz) + rnd(-0.8, 0.8), R = rnd(14, 30);
+          c.goal.set(c.position.x + Math.sin(a) * R, 0, c.position.z + Math.cos(a) * R);
+        }
+      }
       const dist = Math.hypot(c.goal.x - c.position.x, c.goal.z - c.position.z);
       if (dist < 1.5 + sp.radius || c.stateT > 30) { c.setState('idle'); c.idleLen = rnd(2.5, 7); break; }
       c.steer(c.goal.x, c.goal.z, dt, sp.vel.walk, sp.scale > 0.9 ? 1.1 : 2.2);
@@ -290,6 +299,7 @@ export function pensar(c, dt) {
     case 'chase': case 'charge': {
       const tt = t;
       if (!tt && !c.lastSeen) { c.setState('idle'); break; }
+      if (c.nada && tt && tt.jugador && !c.alcanza(tt.x, tt.z)) { c.tgtJugador = false; c.setState('idle'); c.cdCaza = 6; c.sosp = Math.min(c.sosp, 0.4); break; } // el jugador salió del agua: un nadador no puede seguirlo
       if (c.tgt && c.tgt.c.muerta) { // presa abatida → a comer
         c.carcass = c.tgt.c; c.tgt = null; c.setState('feed'); c.feedT = 0; break;
       }

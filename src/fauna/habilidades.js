@@ -56,7 +56,7 @@ export const HAB = {
       const a = info?.amenaza ?? c.amenaza; if (!a) return;
       const ctx = c.ctx, mgr = c.mgr, t = now(c);
       c.llamadaAnim = 1.6; c.jawAnim = 1.2;
-      ctx.events.emit('creature:roar', { especie: c.especie, position: c.center.clone(), llamada: true });
+      ctx.events.emit('creature:roar', { especie: c.especie, position: c.center.clone(), llamada: true, voz: c.sp.voz });
       const S = mgr.sentidos, W = ctx.time.weather;
       const masking = 1 - 0.3 * (W?.rain ?? 0) - 0.2 * (W?.windStrength ?? 0.3);
       let oyen = 0;

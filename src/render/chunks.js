@@ -18,7 +18,7 @@ export const shared = {
   // xyz: dirección hacia el sol (mundo); w: fuerza del lóbulo solar 0..1
   fogB: new Float32Array([0, 1, 0, 0.5]),
   // x,y: distancias (m) entre las que el horizonte se funde 100% con el cielo; z: viento/tiempo; w: reservado
-  fogC: new Float32Array([2300, 3200, 0, 0]),
+  fogC: new Float32Array([6500, 8600, 0, 0]),
   // color de la niebla mirando hacia el sol (lineal, HDR)
   fogSun: new Float32Array([1, 1, 1]),
   // parámetros de sombras de nubes: x: escala (1/m), y: cobertura 0..1, z: oscurecimiento máx, w: altura de nubes (m)

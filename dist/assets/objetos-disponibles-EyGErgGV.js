@@ -1,0 +1,1 @@
+var e=[`antorcha`,`arco`,`cantimplora`,`cuchillo_diente`,`cuchillo_hueso`,`cuchillo_obsidiana`,`cuchillo_piedra`,`fogata`,`garrote`,`hacha_piedra`,`honda`,`jabalina`,`lanza`,`lanza_cuerno`,`lanza_hueso`,`martillo_piedra`,`maza_piedra`,`pico_piedra`,`punzon_hueso`];export{e as t};

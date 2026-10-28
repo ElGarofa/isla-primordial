@@ -37,3 +37,8 @@ Método: lectura del código, compilación (`vite build`), pruebas con Chromium 
 - ~~Sistema de aprendizaje, progresión por uso, calidad~~ → Etapa 2.
 - ~~Tabla de aprovechamiento por especie~~ → Etapa 2 (`COSECHA`, despiece con herramienta).
 - **El documento llegó cortado** en la sección 7F: construcción, estaciones, NPC, facciones, economía y progresión no se pudieron leer.
+
+
+## Nota del 27-oct-2026 (mapa grande)
+
+El mundo de la auditoría (isla de 1,5 km) fue sustituido por el continente de `docs/MAPA.md`. Las pruebas `nado`, `especies` y `glb` buscaban terreno cerca del origen del mapa antiguo y se adaptaron; los resultados y las limitaciones del mapa están en ese documento.

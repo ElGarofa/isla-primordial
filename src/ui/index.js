@@ -1,8 +1,9 @@
 // Módulo UI: HUD, barra rápida, inventario/fabricación, mapa, menú principal, pausa, muerte y ajustes. Todo el texto en español.
 import { ITEMS, TIPOS as TIPOS_ITEM, RANURAS, RANURA_NOMBRE, CALIDADES, HABILIDADES, NIVEL_XP } from '../core/items.js';
 import { CSS } from './style.js';
-import { iconUrl, STAT_SVG } from './icons.js';
+import { iconUrl, iconDibujado, precargarIconos, STAT_SVG } from './icons.js';
 import { createAnimalPanel } from './animal.js';
+import { createMapa } from './mapa.js';
 
 const SETTINGS_KEY = 'isla-primordial:ajustes:v1';
 const TIPOS = TIPOS_ITEM;
@@ -27,6 +28,12 @@ export async function create(ctx) {
   if (ctx.debug.hideUI || !root) return { name: 'ui' };
 
   const style = document.createElement('style'); style.textContent = CSS; document.head.append(style);
+  // iconos con foto: se piden ya (el inventario no aparece en blanco) y, si una foto no carga, esa imagen pasa al icono dibujado
+  precargarIconos();
+  root.addEventListener('error', (e) => {
+    const im = e.target, m = im?.tagName === 'IMG' && /\/icons\/([a-z0-9_]+)\.webp/.exec(im.getAttribute('src') ?? '');
+    if (m) im.src = iconDibujado(m[1]);
+  }, true);
   const lock = () => { if (!ctx.debug.enabled) ctx.container.requestPointerLock?.(); };
   const unlock = () => { try { document.exitPointerLock?.(); } catch { /* sin bloqueo */ } };
   const snd = (nombre = 'ui_click') => ctx.events.emit('ui:sound', { nombre });
@@ -239,9 +246,16 @@ export async function create(ctx) {
       <button class="btn" data-a="nueva">Nueva partida</button>
       <button class="btn" data-a="ajustes">Ajustes</button>
       <button class="btn" data-a="controles">Controles</button>
-    </div><div class="ver">v1.0 · Three.js · generado por código</div>`, 'screen menu hide');
+    </div><div class="ver">v1.0 · Three.js · generado por código</div>
+    <div class="velo hide" data-a="velo" role="button" tabindex="0"><h1 class="logo">ISLA<br>PRIMORDIAL<span>SUPERVIVENCIA</span></h1><p>Haz clic o pulsa una tecla para comenzar</p><small>Con sonido: el navegador solo permite audio tras un gesto</small></div>`, 'screen menu hide');
+  // velo de bienvenida: el navegador no deja sonar nada antes del primer gesto; este clic desbloquea el audio y arranca la música de portada
+  const velo = screens.menu.querySelector('.velo');
+  const ponerVelo = (v) => { velo.classList.toggle('hide', !v); screens.menu.classList.toggle('con-velo', v); };
+  const quitarVelo = () => { if (velo.classList.contains('hide')) return; ponerVelo(false); ctx.audio?.resume?.(); };
+  window.addEventListener('keydown', (e) => { if (!velo.classList.contains('hide') && !e.repeat && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(e.key)) quitarVelo(); });
   screens.menu.addEventListener('click', (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
+    if (a === 'velo') { quitarVelo(); return; }
     snd();
     if (a === 'continuar') startGame(true);
     if (a === 'nueva') startGame(false);
@@ -460,44 +474,12 @@ export async function create(ctx) {
   }
 
   // ---- mapa
-  screens.mapa = el(`<div class="panel map"><canvas width="640" height="640"></canvas><div class="legend"><span>Norte ↑</span><span>● Tú &nbsp; ▲ Fogata</span><span>M para cerrar</span></div></div>`, 'screen dim hide');
-  let mapBase = null;
-  function buildMapBase() {
-    const N = 320, c = document.createElement('canvas'); c.width = c.height = N;
-    const g = c.getContext('2d'), img = g.createImageData(N, N);
-    const half = ctx.world.size * 0.56, step = (half * 2) / N;
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      const x = -half + (i + 0.5) * step, z = -half + (j + 0.5) * step;
-      const h = ctx.world.getHeight(x, z);
-      const hx = ctx.world.getHeight(x + step, z) - h, hz = ctx.world.getHeight(x, z + step) - h;
-      const shade = Math.max(0.55, Math.min(1.35, 1 + (-hx * 0.9 - hz * 0.6) * 0.18));
-      let r, gC, b;
-      if (h < -25) [r, gC, b] = [12, 40, 70]; else if (h < -4) [r, gC, b] = [22, 78, 110]; else if (h < 0) [r, gC, b] = [48, 124, 150];
-      else if (h < 2.2) [r, gC, b] = [214, 196, 140]; else if (h < 40) [r, gC, b] = [58, 118, 56]; else if (h < 70) [r, gC, b] = [92, 108, 62];
-      else if (h < 125) [r, gC, b] = [122, 116, 104]; else [r, gC, b] = [236, 240, 244];
-      const k = h < 0 ? 1 : shade, o = (j * N + i) * 4;
-      img.data[o] = Math.min(255, r * k); img.data[o + 1] = Math.min(255, gC * k); img.data[o + 2] = Math.min(255, b * k); img.data[o + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
-    mapBase = { c, half };
-  }
-  function drawMap() {
-    if (!mapBase) buildMapBase();
-    const cv = $('canvas', screens.mapa), g = cv.getContext('2d'), W = cv.width;
-    g.imageSmoothingEnabled = true; g.drawImage(mapBase.c, 0, 0, W, W);
-    g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1;
-    for (let i = 1; i < 8; i++) { g.beginPath(); g.moveTo((i * W) / 8, 0); g.lineTo((i * W) / 8, W); g.moveTo(0, (i * W) / 8); g.lineTo(W, (i * W) / 8); g.stroke(); }
-    const toXY = (x, z) => [((x + mapBase.half) / (mapBase.half * 2)) * W, ((z + mapBase.half) / (mapBase.half * 2)) * W];
-    g.fillStyle = '#ffb84a';
-    for (const f of S.fires?.() ?? []) { const [px, py] = toXY(f.x, f.z); g.beginPath(); g.moveTo(px, py - 8); g.lineTo(px + 7, py + 6); g.lineTo(px - 7, py + 6); g.closePath(); g.fill(); }
-    const p = ctx.player.position, [px, py] = toXY(p.x, p.z);
-    g.save(); g.translate(px, py); g.rotate(-ctx.player.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2.5;
-    g.beginPath(); g.moveTo(0, -11); g.lineTo(8, 9); g.lineTo(0, 5); g.lineTo(-8, 9); g.closePath(); g.stroke(); g.fill(); g.restore();
-    g.fillStyle = 'rgba(255,255,255,.7)'; g.font = '600 14px sans-serif'; g.fillText('N', W / 2 - 4, 18);
-  }
+  const mapa = createMapa(ctx, { el, S });
+  screens.mapa = mapa.screen;
+  ui.mapa = mapa;
   function toggleMap(force) {
     const open = force ?? openPanel !== 'mapa';
-    if (open) { if (ctx.state !== 'playing') return; drawMap(); showScreen('mapa'); unlock(); snd('ui_open'); }
+    if (open) { if (ctx.state !== 'playing') return; mapa.abrir(); showScreen('mapa'); unlock(); snd('ui_open'); }
     else { closeScreens(); lock(); snd('ui_close'); }
   }
 
@@ -533,6 +515,7 @@ export async function create(ctx) {
     if (state === 'menu') {
       screens.menu.querySelector('[data-a="continuar"]').classList.toggle('hide', !S.hasSave());
       screens.menu.querySelector('[data-a="nueva"]').textContent = S.hasSave() ? 'Nueva partida' : 'Jugar';
+      ponerVelo(!ctx.debug.enabled && !ctx.audio?.running); // con audio ya desbloqueado (volver al menú desde la partida) no hace falta
       showScreen('menu');
     }
     if (state === 'dead') { showScreen('muerte'); void lastCause; }

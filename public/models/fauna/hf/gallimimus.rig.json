@@ -1,0 +1,314 @@
+{
+ "version": 2,
+ "id": "gallimimus",
+ "plantilla": "bipedo",
+ "unidades": "m",
+ "fuente": "gallimimus.glb (Higgsfield/Tripo)",
+ "orientacion": {
+  "giroGrados": 3.9,
+  "escala": 5.96426,
+  "ejeOriginal": -86.1
+ },
+ "triangulos": {
+  "original": 37999,
+  "juego": 13998
+ },
+ "albedoMedio": 0.1681,
+ "huesos": [
+  {
+   "nombre": "hips",
+   "padre": null,
+   "pos": [
+    0.1675,
+    2.468,
+    0.3751
+   ]
+  },
+  {
+   "nombre": "spine1",
+   "padre": "hips",
+   "pos": [
+    -0.2828,
+    1.9381,
+    0.8225
+   ]
+  },
+  {
+   "nombre": "spine2",
+   "padre": "spine1",
+   "pos": [
+    -0.103,
+    2.6923,
+    1.3683
+   ]
+  },
+  {
+   "nombre": "neck1",
+   "padre": "spine2",
+   "pos": [
+    -0.0049,
+    2.7403,
+    1.7605
+   ]
+  },
+  {
+   "nombre": "neck2",
+   "padre": "neck1",
+   "pos": [
+    -0.0112,
+    3.0535,
+    1.9619
+   ]
+  },
+  {
+   "nombre": "head",
+   "padre": "neck2",
+   "pos": [
+    0.0264,
+    4.1365,
+    2.4378
+   ]
+  },
+  {
+   "nombre": "jaw",
+   "padre": "head",
+   "pos": [
+    0.0273,
+    4.0586,
+    2.5145
+   ]
+  },
+  {
+   "nombre": "tail1",
+   "padre": "hips",
+   "pos": [
+    -0.1685,
+    2.5535,
+    -0.1472
+   ]
+  },
+  {
+   "nombre": "tail2",
+   "padre": "tail1",
+   "pos": [
+    -0.1886,
+    2.6335,
+    -0.776
+   ]
+  },
+  {
+   "nombre": "tail3",
+   "padre": "tail2",
+   "pos": [
+    -0.1768,
+    2.7288,
+    -1.3966
+   ]
+  },
+  {
+   "nombre": "tail4",
+   "padre": "tail3",
+   "pos": [
+    -0.0546,
+    2.771,
+    -2.0175
+   ]
+  },
+  {
+   "nombre": "tail5",
+   "padre": "tail4",
+   "pos": [
+    0.1573,
+    2.7292,
+    -2.5505
+   ]
+  },
+  {
+   "nombre": "thighL",
+   "padre": "hips",
+   "pos": [
+    0.3377,
+    2.2892,
+    0.4194
+   ]
+  },
+  {
+   "nombre": "shinL",
+   "padre": "thighL",
+   "pos": [
+    0.2575,
+    1.3422,
+    0.5113
+   ]
+  },
+  {
+   "nombre": "footL",
+   "padre": "shinL",
+   "pos": [
+    0.2354,
+    0.6192,
+    0.3377
+   ]
+  },
+  {
+   "nombre": "armL",
+   "padre": "spine2",
+   "pos": [
+    0.272,
+    2.7765,
+    1.284
+   ]
+  },
+  {
+   "nombre": "forearmL",
+   "padre": "armL",
+   "pos": [
+    0.347,
+    2.2709,
+    1.5369
+   ]
+  },
+  {
+   "nombre": "thighR",
+   "padre": "hips",
+   "pos": [
+    -0.4918,
+    2.2892,
+    0.4194
+   ]
+  },
+  {
+   "nombre": "shinR",
+   "padre": "thighR",
+   "pos": [
+    -0.4362,
+    1.3658,
+    0.8886
+   ]
+  },
+  {
+   "nombre": "footR",
+   "padre": "shinR",
+   "pos": [
+    -0.4471,
+    0.6025,
+    0.8926
+   ]
+  },
+  {
+   "nombre": "armR",
+   "padre": "spine2",
+   "pos": [
+    -0.478,
+    2.7765,
+    1.284
+   ]
+  },
+  {
+   "nombre": "forearmR",
+   "padre": "armR",
+   "pos": [
+    -0.553,
+    2.2709,
+    1.5369
+   ]
+  }
+ ],
+ "patas": [
+  {
+   "name": "L",
+   "thigh": "thighL",
+   "shin": "shinL",
+   "foot": "footL",
+   "phase": 0,
+   "bendFwd": true,
+   "toe": [
+    0.4147,
+    0.0247,
+    0.9854
+   ],
+   "toeMalla": [
+    0.3377,
+    0.0179,
+    0.6415
+   ]
+  },
+  {
+   "name": "R",
+   "thigh": "thighR",
+   "shin": "shinR",
+   "foot": "footR",
+   "phase": 0.5,
+   "bendFwd": true,
+   "toe": [
+    -0.4147,
+    0.0247,
+    0.9854
+   ],
+   "toeMalla": [
+    -0.4918,
+    0.0316,
+    1.3292
+   ]
+  }
+ ],
+ "puntas": {
+  "head": [
+   0.068,
+   4.275,
+   2.9954
+  ],
+  "tail5": [
+   0.3776,
+   2.6398,
+   -2.9962
+  ],
+  "forearmL": [
+   0.4295,
+   1.7147,
+   1.815
+  ],
+  "forearmR": [
+   -0.6355,
+   1.7147,
+   1.815
+  ]
+ },
+ "radios": {
+  "thighL": 0.4983,
+  "thighR": 1.2302
+ },
+ "medidas": {
+  "plantilla": "bipedo",
+  "apoyos": {
+   "procedural": 2,
+   "generada": 2
+  },
+  "marcasZ": [
+   [
+    -3.8,
+    -2.996
+   ],
+   [
+    2.491,
+    2.995
+   ],
+   [
+    0.481,
+    0.802
+   ]
+  ],
+  "factorGrosor": 1.234,
+  "caderaY": 2.468,
+  "caderaYProcedural": 1.75,
+  "largoPatas": {
+   "L": 1.699,
+   "R": 1.801
+  },
+  "largoPatasProcedural": {
+   "L": 1.564,
+   "R": 1.564
+  }
+ },
+ "pesos": "precalculados en el GLB (JOINTS_0/WEIGHTS_0, índices en el orden de huesos)"
+}

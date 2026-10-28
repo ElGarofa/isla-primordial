@@ -106,6 +106,13 @@ export const CSS = /* css */ `
 .btn.sm{display:inline-block;width:auto;padding:9px 16px;font-size:12px;border:1px solid var(--line2);border-radius:4px;letter-spacing:.12em;text-align:center}
 .btn.sm:hover{padding-left:16px;border-color:var(--acc)}
 .ver{position:fixed;left:7vw;bottom:24px;font-size:11px;color:var(--dim);letter-spacing:.1em}
+.velo{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;cursor:pointer;background:radial-gradient(ellipse at center,rgba(3,8,8,.74),rgba(3,8,8,.95))}
+.velo .logo{text-align:center}
+.menu.con-velo .col,.menu.con-velo .ver{visibility:hidden}
+.velo p{margin:26px 0 0;font-size:15px;letter-spacing:.18em;text-transform:uppercase;color:var(--acc);animation:veloPulso 2.4s ease-in-out infinite}
+.velo small{font-size:11px;color:var(--dim);letter-spacing:.08em}
+@keyframes veloPulso{0%,100%{opacity:.45}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.velo p{animation:none}}
 .modal{padding:34px 40px;min-width:min(440px,92vw);max-width:92vw}
 .modal h2{margin:0 0 6px;font-family:var(--serif);font-weight:600;letter-spacing:.14em;font-size:26px}
 .modal .sub{color:var(--dim);font-size:13px;margin-bottom:22px}
@@ -183,9 +190,14 @@ export const CSS = /* css */ `
 .statline b{color:var(--txt)}
 
 /* mapa */
-.map{padding:16px;display:flex;flex-direction:column;gap:10px}
-.map canvas{width:min(78vh,86vw);height:min(78vh,86vw);border-radius:4px;border:1px solid var(--line2);image-rendering:auto}
-.map .legend{font-size:12px;color:var(--dim);display:flex;justify-content:space-between}
+.map{padding:16px;display:flex;flex-direction:column;gap:8px;width:calc(min(76vh,86vw) + 34px);max-width:96vw}
+.map canvas{width:min(76vh,86vw);height:min(76vh,86vw);border-radius:4px;border:1px solid var(--line2);image-rendering:auto;cursor:grab;touch-action:none}
+.map canvas:active{cursor:grabbing}
+.map .mtitle{display:flex;justify-content:space-between;gap:16px;align-items:baseline;font-size:13px}
+.map .mtitle .minfo{color:var(--dim);font-size:12px;text-align:right}
+.map .mleg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--dim)}
+.map .mleg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;border:1px solid rgba(0,0,0,.4)}
+.map .legend{font-size:12px;color:var(--dim);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 
 /* animales: línea de relación al apuntar, panel del animal y aviso de montura */
 .target .tr{font-size:12px;margin-top:2px;display:flex;gap:10px;justify-content:center;align-items:center}

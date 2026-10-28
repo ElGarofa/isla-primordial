@@ -1,6 +1,16 @@
-// Iconos de objetos dibujados con canvas 2D (vectoriales, sin imágenes externas). iconUrl(id) -> dataURL cacheada.
+// Iconos de objetos. Si el objeto tiene foto (public/icons/<id>.webp, generadas con Higgsfield y preparadas con tools/preparar-iconos.py)
+// se usa la foto; si no, se dibuja con canvas 2D (vectorial, sin imágenes externas). iconUrl(id) -> URL o dataURL cacheada.
+// ?iconos=0 fuerza los dibujados (para comparar).
 import { ITEMS } from '../core/items.js';
+import { ICONOS } from './iconos-disponibles.js';
 const cache = new Map();
+const CON_FOTO = new Set(typeof location !== 'undefined' && new URLSearchParams(location.search).get('iconos') === '0' ? [] : ICONOS);
+const BASE = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || './';
+/** Pide las fotos al navegador antes de abrir el inventario (así no aparecen en blanco la primera vez). */
+export function precargarIconos() {
+  if (typeof Image === 'undefined') return;
+  for (const id of CON_FOTO) { const im = new Image(); im.decoding = 'async'; im.src = iconUrl(id); }
+}
 
 function mk(draw, S = 96) {
   const c = document.createElement('canvas'); c.width = c.height = S;
@@ -270,11 +280,14 @@ function generico(id) {
 export function iconUrl(id) {
   let u = cache.get(id);
   if (!u) {
-    try { u = mk(DRAW[id] ?? generico(id)); } catch { u = ''; }
+    if (CON_FOTO.has(id)) u = `${BASE}icons/${id}.webp`;
+    else try { u = mk(DRAW[id] ?? generico(id)); } catch { u = ''; }
     cache.set(id, u);
   }
   return u;
 }
+/** Icono dibujado por código aunque exista la foto (para la prueba de iconos y como respaldo si la foto no carga). */
+export function iconDibujado(id) { try { return mk(DRAW[id] ?? generico(id)); } catch { return ''; } }
 
 /** Iconos SVG pequeños de las estadísticas. */
 export const STAT_SVG = {

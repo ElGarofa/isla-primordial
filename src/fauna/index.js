@@ -6,27 +6,20 @@ import { activarHab } from './habilidades.js';
 import { especiesDeEcosistema, ECOSISTEMAS, CATALOGO, POR_ID, resumen } from './catalogo.js';
 import { Creature, prepareLegs } from './creature.js';
 import { makeSkin } from './skin.js';
+import { cargarVisuales } from './modelo3d.js';
+import { cargarEstaticos } from './estatico.js';
 import { mulberry32 } from '../core/rng.js';
 import { CONFIG } from '../core/config.js';
 import { ITEMS } from '../core/items.js';
 import * as V from './vinculo.js';
+import { createPoblacion } from './poblacion.js';
+import { nombreTerritorio } from './territorio.js';
 
 const TAU = Math.PI * 2;
 
-// Población objetivo por especie y características de reaparición (m del jugador, segundos).
-const POBLACION = [
-  { id: 'raptor', grupos: [3, 3], biomes: ['selva', 'pradera'], minH: 4, maxH: 90, slope: 0.12, minSpawn: 150 },
-  { id: 'compsognatus', grupos: [3, 3, 2], biomes: ['playa', 'pradera', 'selva'], minH: 1.5, maxH: 60, slope: 0.14, minSpawn: 70 },
-  { id: 'triceratops', grupos: [3, 2], biomes: ['pradera', 'selva'], minH: 4, maxH: 70, slope: 0.1, minSpawn: 120 },
-  { id: 'braquiosaurio', grupos: [1, 1, 1], biomes: ['pradera', 'selva'], minH: 5, maxH: 60, slope: 0.07, minSpawn: 160 },
-  { id: 'pteranodon', grupos: [1, 1, 1], biomes: null, minH: -100, maxH: 999, slope: 9, minSpawn: 0, vuelo: true },
-  { id: 'tyrannosaurus', grupos: [1, 1], biomes: ['selva', 'pradera'], minH: 4, maxH: 80, slope: 0.1, minSpawn: 230 },
-  { id: 'parasaurolophus', grupos: [4, 3], biomes: ['pradera', 'selva'], minH: 3, maxH: 60, slope: 0.1, minSpawn: 130 },
-  { id: 'stegosaurus', grupos: [2, 2], biomes: ['pradera', 'selva'], minH: 3, maxH: 60, slope: 0.1, minSpawn: 130 },
-  { id: 'ankylosaurus', grupos: [1, 1, 1], biomes: ['pradera'], minH: 3, maxH: 55, slope: 0.1, minSpawn: 110 },
-  { id: 'gallimimus', grupos: [5, 4], biomes: ['pradera', 'playa'], minH: 1.5, maxH: 50, slope: 0.12, minSpawn: 100 },
-];
-const ACTIVO = 320; // m: más lejos de la cámara las criaturas quedan congeladas
+/** Distancias [animación completa, visibilidad] por defecto de una especie sin entrada propia: crecen con el tamaño y los voladores se ven desde lejos. */
+const distDe = (sp) => { const v = Math.min(1100, Math.max(300, 260 + 70 * sp.radius + (sp.ai?.vuelo ? 500 : 0))); return [v * 0.4, v]; };
+const ACTIVO = 650; // m: más lejos de la cámara las criaturas quedan congeladas (api.radioActivo lo cambia para pruebas); más allá de 320 m se actualizan cada 8 cuadros
 const DIST = { raptor: [140, 380], compsognatus: [60, 160], triceratops: [200, 520], braquiosaurio: [420, 1000], pteranodon: [700, 900], tyrannosaurus: [220, 560], parasaurolophus: [200, 520], stegosaurus: [200, 480], ankylosaurus: [150, 420], gallimimus: [120, 340] }; // [animación completa, visibilidad]
 
 export async function create(ctx) {
@@ -34,22 +27,32 @@ export async function create(ctx) {
   const rng = mulberry32((CONFIG.seed ?? 1) + 7777);
   const built = new Map();
   const bases = new Map();
+  // Modelos 3D (GLB) de las especies que los declaran: se cargan una vez; si alguno falla, esa especie usa su malla procedural.
+  const erroresGLB = {};
+  const usarGLB = !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('glb') === '0');
+  const visuales = usarGLB ? await cargarVisuales(Object.values(SPECIES), erroresGLB) : new Map();
+  // Modelos estáticos (GLB sin huesos) acoplados al esqueleto procedural: mismo respaldo si no cargan.
+  if (usarGLB) await cargarEstaticos(Object.values(SPECIES), erroresGLB);
   const list = [];
   let nextId = 1;
-  let respawnT = 20;
   let ambT = 12;
   let grace = 0;
   let tick = 0;
 
-  // Ecosistema coherente opcional (?eco=hell_creek | morrison | nemegt). Por defecto: isla de ficción con mezcla deliberada.
-  const ecoId = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('eco')) || 'isla_ficcion';
-  const ecoEspecies = especiesDeEcosistema(ecoId);
-  const poblacion = ecoEspecies ? POBLACION.filter((d) => ecoEspecies.includes(d.id)) : POBLACION;
+  // Modo de ecosistema opcional (?eco=<id>): solo especies de ese ecosistema del catálogo (cualquiera de los 50, o los de ECOSISTEMAS), en cualquier provincia.
+  // Por defecto: población por provincia (poblacion.js), sin mezclar épocas.
+  const params = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
+  const ecoId = params.get('eco') || null;
+  const ecoEspecies = ecoId ? (especiesDeEcosistema(ecoId) ?? CATALOGO.filter((e) => e.ecosistema === ecoId).map((e) => e.id)) : null;
+  // En el entorno de pruebas (?debug=1) la población dinámica empieza apagada para que los tests controlen la escena; ?stream=1 la enciende.
+  const streaming = params.get('stream') === '1' || !ctx.debug?.enabled;
   const registro = [];
 
   const mgr = {
     ctx, list, registro, sentidos: null,
     get grace() { return grace; },
+    /** Datos compartidos del modelo GLB de la especie (null si no tiene o no cargó). */
+    getVisual(sp) { return visuales.get(sp.id) ?? null; },
     getBuilt(sp) {
       let b = built.get(sp.id);
       if (!b) { b = sp.build(); b.legs = prepareLegs(b); built.set(sp.id, b); }
@@ -62,18 +65,28 @@ export async function create(ctx) {
       let m = bases.get(key);
       if (m) return m;
       let base = bases.get(sp.id);
+      const tex = sp.estatico?.datos?.v === 2 ? sp.estatico.datos : null;
+      if (!base && tex) { // piel texturizada generada: la textura del modelo, sin color de vértice
+        base = new THREE.MeshStandardMaterial({ map: tex.mapa, roughness: 0.8, metalness: 0, side: tex.plantilla === 'pterosaurio' ? THREE.DoubleSide : THREE.FrontSide });
+        // las texturas de Tripo traen parte de la sombra horneada y quedan oscuras bajo la luz del juego: se aclaran hacia un albedo medio de ~0,2
+        base.userData.texturizada = true; base.userData.aclarar = Math.min(2.2, Math.max(1, 0.2 / Math.max(0.02, tex.rig?.albedoMedio ?? 0.2)));
+        ctx.lighting?.setupMaterial?.(base);
+        bases.set(sp.id, base);
+      }
       if (!base) {
         const skin = makeSkin(sp.skin, 256);
+        // la escala de la escama es propia de cada especie: se clona la textura (comparte la imagen en la GPU) en vez de cambiar la compartida
+        const map = skin.albedo.clone(), normalMap = skin.normal.clone();
+        for (const t of [map, normalMap]) { t.repeat.set(sp.uvK ?? 1, sp.uvK ?? 1); t.needsUpdate = true; }
         base = new THREE.MeshStandardMaterial({
-          vertexColors: true, map: skin.albedo, normalMap: skin.normal, normalScale: new THREE.Vector2(0.9, 0.9),
-          roughness: sp.roughness ?? 0.8, metalness: 0, side: sp.id === 'pteranodon' ? THREE.DoubleSide : THREE.FrontSide,
+          vertexColors: true, map, normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
+          roughness: sp.roughness ?? 0.8, metalness: 0, side: sp.id === 'pteranodon' || sp.doble ? THREE.DoubleSide : THREE.FrontSide,
         });
-        for (const t of [skin.albedo, skin.normal]) t.repeat.set(sp.uvK ?? 1, sp.uvK ?? 1);
         ctx.lighting?.setupMaterial?.(base);
         bases.set(sp.id, base);
       }
       m = base.clone();
-      const t = (idx + 0.5) / 4, v = (sp.tono ?? 1.0) + (t - 0.5) * 0.25;
+      const t = (idx + 0.5) / 4, v = base.userData.texturizada ? base.userData.aclarar * (1 + (t - 0.5) * 0.18) : (sp.tono ?? 1.0) + (t - 0.5) * 0.25;
       m.color.setRGB(v * (1 + (t - 0.5) * 0.08), v, v * (1 - (t - 0.5) * 0.1));
       ctx.lighting?.setupMaterial?.(m);
       bases.set(key, m);
@@ -91,7 +104,7 @@ export async function create(ctx) {
     },
     onKilled(c) {
       const pos = c.center.clone();
-      ctx.events.emit('creature:killed', { especie: c.especie, position: pos });
+      ctx.events.emit('creature:killed', { especie: c.especie, position: pos, voz: c.sp.voz });
       // El cadáver se aprovecha con "Despiezar" (cuchillo, hacha…): lo obtenido depende de la herramienta, lo devorado y el oficio del jugador.
       const reg = ctx.player?.registerInteractable;
       if (reg && ctx.survival?.cosechar) {
@@ -155,6 +168,7 @@ export async function create(ctx) {
 
   // ---------------------------------------------------------------------------------------------- API pública
   const _tmp = new THREE.Vector3();
+  let radioActivo = ACTIVO;
   function spawnAt(especie, x, z, opts = {}) {
     const sp = SPECIES[especie];
     if (!sp) return null;
@@ -175,7 +189,7 @@ export async function create(ctx) {
     c.dispose();
   }
 
-  const _sph = new THREE.Vector3();
+  const _sph = new THREE.Vector3(), _hl = [0, 0, 0, 0];
   const api = {
     creatures: list,
     /** Rayo de interacción/ataque contra las esferas de impacto de cada criatura viva. */
@@ -186,8 +200,9 @@ export async function create(ctx) {
         const dxo = c.position.x - origin.x, dzo = c.position.z - origin.z;
         if (dxo * dxo + dzo * dzo > (maxDist + 22) * (maxDist + 22)) continue;
         const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw);
-        for (const [hx, hy, hz, hr] of c.sp.hit) {
-          // esfera en el mundo (el modelo mira a +z local; yaw = rotación sobre Y)
+        for (const h of c.sp.hit) {
+          // esfera en el mundo (el modelo mira a +z local; yaw = rotación sobre Y; los voladores además ruedan y cabecean)
+          const [hx, hy, hz, hr] = c.esferaLocal(h, _hl);
           const wx = c.position.x + hx * cy + hz * sy, wy = c.position.y + hy, wz = c.position.z - hx * sy + hz * cy;
           const ox = wx - origin.x, oy = wy - origin.y, oz = wz - origin.z;
           const tc = ox * dir.x + oy * dir.y + oz * dir.z;
@@ -203,6 +218,8 @@ export async function create(ctx) {
     },
     damage(criatura, cantidad, fuente = 'jugador', opts = null) { criatura?.damage?.(cantidad, fuente, null, opts); },
     spawnAt,
+    /** Radio (m) hasta el que las criaturas se actualizan; más lejos quedan congeladas. Por defecto 320; las pruebas de nado lo suben porque la plataforma continental deja el mar abierto a ~500 m de la playa. */
+    get radioActivo() { return radioActivo; }, set radioActivo(v) { radioActivo = Math.max(50, +v || ACTIVO); },
     /** Crea una manada real (con centro y miembros) en (x,z). Devuelve los miembros. Útil para pruebas y eventos. */
     spawnHerd(especie, x, z, n = 3, radio = 6) {
       const herd = { center: new THREE.Vector3(x, 0, z), members: [] };
@@ -220,9 +237,13 @@ export async function create(ctx) {
       return out;
     },
     remove,
-    clear() { for (let i = list.length - 1; i >= 0; i--) remove(list[i]); },
+    clear() { for (let i = list.length - 1; i >= 0; i--) remove(list[i]); pob?.reiniciar(); },
     stats() { return { total: list.length, vivas: list.filter((c) => !c.muerta).length, visibles: list.filter((c) => c.group.visible).length }; },
-    populate,
+    /** Puebla el entorno del jugador según la provincia en la que está (inicio, pruebas). */
+    populate: () => pob.llenar(),
+    /** Población por provincia (poblacion.js): tabla de especies, celdas y estadísticas. */
+    get poblacion() { return pob; },
+    territorioDe: (c) => nombreTerritorio(c.terr),
     setGrace(t) { grace = t; },
     despiezar: (c) => mgr.despiezar(c),
     get sentidos() { return mgr.sentidos; },
@@ -248,56 +269,22 @@ export async function create(ctx) {
         if (!c || !c.rel) { if (c) remove(c); continue; }
         c.hp = Math.min(c.hpMax, d.hp ?? c.hpMax); c.hambre = d.hambre ?? c.hambre;
         V.restaurarRel(c, d.rel);
+        if (!V.esPropio(c)) c.terr = pob.territorioEn(c.especie, c.position.x, c.position.z) ?? undefined; // un salvaje habituado sigue sin cruzar la frontera de su provincia
       }
     },
-    ecosistema: { id: ecoId, ...(ECOSISTEMAS[ecoId] ?? ECOSISTEMAS.isla_ficcion) },
+    /** Estado de los modelos 3D: especies con GLB cargado, errores y estadísticas de cada uno (pruebas y depuración). */
+    /** Modelos estáticos acoplados al esqueleto procedural (estatico.js): ids cargados y sus estadísticas. */
+    estaticos: { get cargados() { return Object.values(SPECIES).filter((x) => x.estatico?.datos).map((x) => x.id); }, stats(id) { const d = SPECIES[id]?.estatico?.datos; return d ? { tris: d.tris, verts: d.verts, H: d.H, k: d.k, hit: d.hit } : null; }, errores: erroresGLB },
+    modelos: { get cargados() { return [...visuales.keys()]; }, errores: erroresGLB, get stats() { return Object.fromEntries([...visuales].map(([k, v]) => [k, v.stats])); }, activo: usarGLB },
+    ecosistema: { id: ecoId ?? 'provincias', ...(ECOSISTEMAS[ecoId] ?? ECOSISTEMAS.isla_ficcion) },
     catalogo: { filas: CATALOGO, porId: POR_ID, resumen },
   };
   mgr.sentidos = createSentidos(ctx, mgr);
   ctx.fauna = api;
 
   // ---------------------------------------------------------------------------------------------- población
-  function findSpot(f, from) {
-    const sp = world.spawn;
-    for (let i = 0; i < 400; i++) {
-      let x, z;
-      if (from) { const a = rng() * TAU, r = 6 + rng() * 20; x = from.x + Math.cos(a) * r; z = from.z + Math.sin(a) * r; } else { const a = rng() * TAU, r = Math.sqrt(rng()) * world.size * 0.4; x = Math.cos(a) * r; z = Math.sin(a) * r; }
-      const h = world.getHeight(x, z);
-      if (h < f.minH || h > f.maxH) continue;
-      if (!f.vuelo) {
-        if (world.getSlope(x, z) > f.slope) continue;
-        if (f.biomes && !f.biomes.includes(world.getBiome(x, z))) continue;
-      }
-      if (Math.hypot(x - sp.x, z - sp.z) < f.minSpawn) continue;
-      const pp = ctx.player?.position;
-      if (pp && ctx.state === 'playing' && Math.hypot(x - pp.x, z - pp.z) < 90) continue;
-      return { x, z };
-    }
-    return null;
-  }
-
-  function spawnGroup(def, n) {
-    const centro = findSpot(def);
-    if (!centro) return 0;
-    const herd = { center: new THREE.Vector3(centro.x, 0, centro.z), members: [] };
-    let made = 0;
-    for (let i = 0; i < n; i++) {
-      const s = def.vuelo ? centro : findSpot(def, centro);
-      if (!s) continue;
-      const c = spawnAt(def.id, s.x, s.z, { herd, tint: rng() });
-      if (c) { herd.members.push(c); made++; }
-    }
-    return made;
-  }
-
-  function populate() {
-    for (const def of poblacion) for (const n of def.grupos) spawnGroup(def, n);
-  }
-  populate();
-  grace = 45;
-
-  const target = {};
-  for (const def of poblacion) target[def.id] = def.grupos.reduce((a, b) => a + b, 0);
+  const pob = createPoblacion(ctx, mgr, api, { eco: ecoEspecies, activo: streaming });
+  if (streaming) { pob.llenar({ min: 40, conBienvenida: true }); grace = 45; }
 
   // ---------------------------------------------------------------------------------------------- bucle
   const cam = ctx.camera;
@@ -323,7 +310,7 @@ export async function create(ctx) {
     for (let i = list.length - 1; i >= 0; i--) {
       const c = list[i];
       const dx = c.position.x - cx, dz = c.position.z - cz, d = Math.hypot(dx, dz);
-      const [dAnim, dVis] = DIST[c.especie] ?? [150, 400];
+      const [dAnim, dVis] = DIST[c.especie] ?? distDe(c.sp);
       const vis = d < dVis;
       c.group.visible = vis;
       if (c.muerta) {
@@ -333,10 +320,10 @@ export async function create(ctx) {
         continue;
       }
       if (!playing && ctx.state !== 'dead') continue;
-      if (d > ACTIVO) continue;
+      if (d > radioActivo) continue;
       c.mesh.castShadow = d < 55 + 30 * c.sp.radius;
       // lejos: se actualiza cada pocos cuadros con un dt acumulado
-      if (d > dAnim * 0.6) { c._acc = (c._acc ?? 0) + dt; if ((tick + c.id) % 4 !== 0) continue; const adt = c._acc; c._acc = 0; c.update(adt, d < dAnim); } else c.update(dt, true);
+      if (d > dAnim * 0.6) { const paso = d > 320 ? 8 : 4; c._acc = (c._acc ?? 0) + dt; if ((tick + c.id) % paso !== 0) continue; const adt = Math.min(c._acc, 0.5); c._acc = 0; c.update(adt, d < dAnim); } else c.update(dt, true);
     }
 
     // rugidos ambientales de criaturas cercanas (dan vida al bosque aunque no se vean)
@@ -346,15 +333,7 @@ export async function create(ctx) {
       const cand = list.filter((c) => !c.muerta && !c.flight && Math.hypot(c.position.x - cx, c.position.z - cz) < 130);
       if (cand.length) cand[Math.floor(rng() * cand.length)].roar();
     }
-    // reaparición: mantiene la población lejos del jugador
-    respawnT -= dt;
-    if (respawnT <= 0 && ctx.state === 'playing') {
-      respawnT = 18;
-      for (const def of poblacion) {
-        const vivos = list.filter((c) => c.especie === def.id && !c.muerta && !V.esPropio(c)).length; // los animales propios no cuentan como población salvaje
-        if (vivos < target[def.id] * 0.7) { spawnGroup(def, Math.min(def.grupos[0], target[def.id] - vivos)); break; }
-      }
-    }
+    pob.update(dt);
   }
 
   ctx.events.on('player:respawn', () => { grace = 30; for (const c of list) if (!c.muerta && (c.state === 'chase' || c.state === 'charge')) c.setState('idle'); });

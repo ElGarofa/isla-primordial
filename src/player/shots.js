@@ -13,7 +13,11 @@ export const shots = {
     ['jugador_vm_lanza', 'lanza', 12, 0],
     ['jugador_vm_lanza_estocada', 'lanza', 12, 0.3],
     ['jugador_vm_antorcha_noche', 'antorcha', 12, 0, 21.8],
-  ].map(([name, item, , atk, hour]) => [name, (ctx) => {
+    // una por objeto con modelo 3D (comprobar el ajuste al agarre)
+    ...['antorcha', 'arco', 'cuchillo_diente', 'cuchillo_hueso', 'cuchillo_obsidiana', 'cuchillo_piedra', 'garrote', 'honda', 'jabalina', 'lanza_cuerno', 'lanza_hueso', 'martillo_piedra', 'maza_piedra', 'punzon_hueso']
+      .map((id) => [`jugador_vm_${id}`, id, 12, 0]),
+  ].map(([name, item, , atk, hour]) => [name, async (ctx) => {
+    await ctx.viewmodel?.listo; // los modelos 3D de los objetos cargan en segundo plano
     const p = ctx.world.spawn;
     return {
       hour: hour ?? 14.5,

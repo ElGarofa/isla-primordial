@@ -1,7 +1,7 @@
 # Objetos, recetas y aprendizaje (Etapas 2 y 3)
 
 > Documento generado por `node tools/gen-items-doc.mjs` desde `src/core/items.js` (única fuente de verdad). No editar a mano.
-> 62 objetos · 44 recetas · 10 tablas de despiece.
+> 67 objetos · 45 recetas · 10 tablas de despiece.
 
 ## Cómo funciona
 
@@ -46,6 +46,10 @@
 | Diente grande | 0.08 kg | 0.04 L | pila 30 | Diente aserrado de un gran depredador. |
 | Cuerno | 1.4 kg | 0.8 L | pila 10 | Cuerno macizo de un herbívoro acorazado. |
 | Osteodermo | 1.1 kg | 0.6 L | pila 20 | Placa ósea de la armadura de un anquilosaurio. |
+| Arcilla | 1 kg | 0.5 L | pila 50 | Barro fino y pegajoso de los pantanos: se moldea y se cuece. |
+| Obsidiana | 0.4 kg | 0.2 L | pila 40 | Vidrio volcánico negro: se talla en filos más cortantes que la piedra. |
+| Sal | 0.15 kg | 0.08 L | pila 60 | Costras de sal de playas y salares: conserva la carne. |
+| Ámbar | 0.05 kg | 0.03 L | pila 30 | Resina fosilizada de los bosques fríos: dorada, dura y rara. |
 | Cuerda | 0.1 kg | 0.08 L | pila 40 | Cuerda trenzada de fibra o liana. |
 
 ## Familia B — Herramientas primitivas
@@ -57,6 +61,7 @@
 | Cuchillo de piedra | 0.3 kg | 0.2 L | dur 45 · daño 8 · [corta] · repara con 1× Piedra | Filo tosco para cortar y despiezar. |
 | Cuchillo de hueso | 0.25 kg | 0.2 L | dur 40 · daño 9 · [corta] · repara con 1× Hueso | Más fino y afilado que el de piedra. |
 | Cuchillo de diente | 0.3 kg | 0.2 L | dur 90 · daño 13 · [corta] · repara con 1× Resina | Un diente de depredador montado como cuchillo: corta casi todo. |
+| Cuchillo de obsidiana | 0.3 kg | 0.2 L | dur 55 · daño 11 · [corta] · repara con 1× Obsidiana | Filo de vidrio volcánico: corta mejor que la piedra, pero se mella. |
 | Punzón de hueso | 0.1 kg | 0.1 L | dur 60 · daño 4 · [perfora] · repara con 1× Hueso | Perfora cuero para coserlo. |
 | Martillo de piedra | 2 kg | 1.2 L | dur 80 · daño 12 · [martillar, contundente] · repara con 1× Piedra, 1× Fibra | Machaca y da forma a piedra y hueso. |
 | Antorcha | 0.6 kg | 0.6 L | dur 120 · daño 6 | Ilumina la noche. |
@@ -132,7 +137,7 @@
 |---|---|---|---|---|
 | Fogata | 3 kg | 2 L | pila 5 | Cocina, da calor y luz. |
 
-## Recetas (44)
+## Recetas (45)
 
 | Producto | Materiales | Requisitos | Oficio | XP | Se aprende |
 |---|---|---|---|---|---|
@@ -154,6 +159,7 @@
 | Punzón de hueso | 1× Hueso | herramienta: algo que corte | Talla 0 | 2 | Al tener Hueso |
 | Martillo de piedra | 2× Madera, 2× Piedra, 2× Fibra | — | Talla 0 | 3 | Al fabricar Cuchillo de piedra |
 | Cuchillo de diente | 1× Diente grande, 1× Madera, 1× Resina | herramienta: algo que corte | Talla 1 | 5 | Al tener Diente grande |
+| Cuchillo de obsidiana | 1× Obsidiana, 1× Madera, 2× Fibra | herramienta: martillo | Talla 1 | 5 | Al tener Obsidiana |
 | Arco | 3× Rama, 2× Cuerda | herramienta: algo que corte | Caza 0 | 5 | Al tener Rama |
 | Honda | 1× Cuero, 2× Cuerda | — | Caza 0 | 3 | Al fabricar Cuerda |
 | Jabalina | 3× Madera, 1× Piedra, 2× Fibra | — | Caza 0 | 4 | Al fabricar Lanza |
@@ -192,14 +198,32 @@
 | arbol | cada golpe | Corteza | 1 | 25 % | herramienta talar |
 | arbol | cada golpe | Resina | 1 | 8 % | — |
 | arbol | cada golpe | Liana | 1 | 14 % | bioma selva |
+| arbol | cada golpe | Resina | 1–2 | 22 % | bioma selva |
+| arbol | cada golpe | Hoja grande | 1–2 | 30 % | bioma selva |
+| arbol | cada golpe | Hoja grande | 1 | 25 % | bioma playa |
+| arbol | cada golpe | Resina | 1–2 | 28 % | bioma taiga |
+| arbol | cada golpe | Ámbar | 1 | 7 % | bioma taiga |
+| arbol | cada golpe | Resina | 1 | 15 % | bioma bosque |
+| arbol | cada golpe | Fibra | 1–2 | 35 % | bioma pantano |
 | arbol | al caer/romperse | Madera | 5 | 100 % | — |
 | arbol | al caer/romperse | Rama | 2–4 | 100 % | — |
 | arbol | al caer/romperse | Corteza | 2–3 | 100 % | herramienta talar |
 | roca | cada golpe | Piedra | 2 | 100 % | herramienta picar |
 | roca | cada golpe | Pedernal | 1 | 15 % | herramienta picar |
 | roca | cada golpe | Piedra | 1 | 30 % | sin picar |
+| roca | cada golpe | Pedernal | 1 | 18 % | herramienta picar, bioma montana |
+| roca | cada golpe | Pedernal | 1 | 18 % | herramienta picar, bioma desierto |
 | roca | al caer/romperse | Piedra | 4 | 100 % | — |
 | roca | al caer/romperse | Pedernal | 1 | 100 % | — |
+| veta_obsidiana | cada golpe | Obsidiana | 1 | 50 % | herramienta picar |
+| veta_obsidiana | al caer/romperse | Obsidiana | 2–4 | 100 % | — |
+| veta_sal | cada golpe | Sal | 1–2 | 60 % | herramienta picar |
+| veta_sal | cada golpe | Sal | 1 | 25 % | sin picar |
+| veta_sal | al caer/romperse | Sal | 3–5 | 100 % | — |
+| veta_arcilla | cada golpe | Arcilla | 1–2 | 100 % | — |
+| veta_arcilla | al caer/romperse | Arcilla | 4–6 | 100 % | — |
+| cactus | cada golpe | Agua fresca | 1–2 | 100 % | herramienta corta |
+| cactus | cada golpe | Fibra | 1 | 50 % | — |
 | baya | cada golpe | Baya | 3–5 | 100 % | — |
 | baya | cada golpe | Fibra | 1 | 100 % | — |
 | baya | cada golpe | Hoja grande | 1–2 | 50 % | — |
@@ -224,4 +248,4 @@
 ## Pruebas
 
 - `node tools/items-test.mjs` — integridad de datos y **alcanzabilidad**: todos los objetos se pueden conseguir desde cero siguiendo el grafo real de aprendizaje.
-- `node tools/craft-test.mjs` — en navegador: las 44 recetas (consumo, producción, desgaste, XP, evento), rechazos, aprendizaje, oficios, rotura, reparación, carga, armadura, melé, arco, honda, jabalina, despiece, guardado v2 y migración desde v1.
+- `node tools/craft-test.mjs` — en navegador: las 45 recetas (consumo, producción, desgaste, XP, evento), rechazos, aprendizaje, oficios, rotura, reparación, carga, armadura, melé, arco, honda, jabalina, despiece, guardado v2 y migración desde v1.

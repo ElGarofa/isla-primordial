@@ -7,7 +7,7 @@ const shortest = (a) => { a %= TAU; if (a > Math.PI) a -= TAU; if (a < -Math.PI)
 const _o = [];
 
 // atenuación de la visión por vegetación (por metro de línea de visión, según bioma)
-const VEG = { selva: 0.016, pantano: 0.01, pradera: 0.0025, montana: 0.004, playa: 0, nieve: 0 };
+const VEG = { selva: 0.016, taiga: 0.013, bosque: 0.012, pantano: 0.01, montana: 0.004, pradera: 0.0025, desierto: 0.0006, volcan: 0.0008, playa: 0, nieve: 0, mar: 0 };
 
 export function createSentidos(ctx, mgr) {
   const world = ctx.world;
@@ -125,6 +125,7 @@ export function createSentidos(ctx, mgr) {
     let best = null, bd = olfato * olfato;
     for (const o of mgr.list) {
       if (!o.muerta || o.deathT > 70 || o.devorado > 28) continue;
+      if (o.nada ? !c.nada && !c.sp.semiacuatico : c.nada && !c.alcanza(o.position.x, o.position.z)) continue; // un cadáver flotando solo lo alcanza quien nada; un nadador no sale a tierra
       const dx = o.position.x - c.position.x, dz = o.position.z - c.position.z, dd = dx * dx + dz * dz;
       if (dd < bd) { bd = dd; best = o; }
     }

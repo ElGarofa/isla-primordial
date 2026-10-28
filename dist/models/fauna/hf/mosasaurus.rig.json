@@ -1,0 +1,243 @@
+{
+ "version": 2,
+ "id": "mosasaurus",
+ "plantilla": "acuatico",
+ "unidades": "m",
+ "fuente": "mosasaurus.glb (Higgsfield/Tripo)",
+ "orientacion": {
+  "giroGrados": 4.2,
+  "escala": 11.93003,
+  "ejeOriginal": -85.8
+ },
+ "triangulos": {
+  "original": 37998,
+  "juego": 14000
+ },
+ "albedoMedio": 0.1804,
+ "huesos": [
+  {
+   "nombre": "hips",
+   "padre": null,
+   "pos": [
+    0.9105,
+    1.8314,
+    1.9079
+   ]
+  },
+  {
+   "nombre": "spine1",
+   "padre": "hips",
+   "pos": [
+    0.3116,
+    2.3877,
+    4.0262
+   ]
+  },
+  {
+   "nombre": "neck1",
+   "padre": "spine1",
+   "pos": [
+    -0.0336,
+    2.476,
+    4.1733
+   ]
+  },
+  {
+   "nombre": "head",
+   "padre": "neck1",
+   "pos": [
+    -0.0395,
+    2.3202,
+    4.551
+   ]
+  },
+  {
+   "nombre": "jaw",
+   "padre": "head",
+   "pos": [
+    0.1049,
+    2.1788,
+    4.7157
+   ]
+  },
+  {
+   "nombre": "tail1",
+   "padre": "hips",
+   "pos": [
+    -0.2426,
+    2.3185,
+    -0.1259
+   ]
+  },
+  {
+   "nombre": "tail2",
+   "padre": "tail1",
+   "pos": [
+    -0.3544,
+    2.3456,
+    -1.1927
+   ]
+  },
+  {
+   "nombre": "tail3",
+   "padre": "tail2",
+   "pos": [
+    -0.3849,
+    2.4736,
+    -2.2419
+   ]
+  },
+  {
+   "nombre": "tail4",
+   "padre": "tail3",
+   "pos": [
+    -0.2502,
+    2.6002,
+    -3.2617
+   ]
+  },
+  {
+   "nombre": "tail5",
+   "padre": "tail4",
+   "pos": [
+    0.0712,
+    2.7882,
+    -4.3198
+   ]
+  },
+  {
+   "nombre": "fluke",
+   "padre": "tail5",
+   "pos": [
+    0.5207,
+    3.0501,
+    -5.3619
+   ]
+  },
+  {
+   "nombre": "flFL1",
+   "padre": "spine1",
+   "pos": [
+    1.0646,
+    1.3628,
+    3.2636
+   ]
+  },
+  {
+   "nombre": "flFL2",
+   "padre": "flFL1",
+   "pos": [
+    2.3642,
+    0.7619,
+    2.6645
+   ]
+  },
+  {
+   "nombre": "flFR1",
+   "padre": "spine1",
+   "pos": [
+    -3.3124,
+    1.3628,
+    3.2636
+   ]
+  },
+  {
+   "nombre": "flFR2",
+   "padre": "flFR1",
+   "pos": [
+    -3.6197,
+    0.6978,
+    3.2056
+   ]
+  },
+  {
+   "nombre": "flHL1",
+   "padre": "hips",
+   "pos": [
+    0.7721,
+    1.5354,
+    0.4278
+   ]
+  },
+  {
+   "nombre": "flHL2",
+   "padre": "flHL1",
+   "pos": [
+    2.328,
+    0.7951,
+    1.0211
+   ]
+  },
+  {
+   "nombre": "flHR1",
+   "padre": "hips",
+   "pos": [
+    -1.162,
+    1.5354,
+    0.4278
+   ]
+  },
+  {
+   "nombre": "flHR2",
+   "padre": "flHR1",
+   "pos": [
+    -1.3959,
+    1.81,
+    0.465
+   ]
+  }
+ ],
+ "patas": [],
+ "puntas": {
+  "head": [
+   0.2501,
+   2.2628,
+   5.9955
+  ],
+  "fluke": [
+   0.7961,
+   3.3196,
+   -5.9957
+  ],
+  "flFL2": [
+   3.6638,
+   0.1611,
+   2.0653
+  ],
+  "flFR2": [
+   -3.9269,
+   0.0328,
+   3.1477
+  ],
+  "flHL2": [
+   3.884,
+   0.0547,
+   1.6144
+  ],
+  "flHR2": [
+   -1.6298,
+   2.0847,
+   0.5022
+  ]
+ },
+ "radios": {},
+ "medidas": {
+  "plantilla": "acuatico",
+  "marcasZ": [
+   [
+    -8.171,
+    -5.996
+   ],
+   [
+    4.26,
+    5.995
+   ]
+  ],
+  "factorGrosor": 2.184,
+  "caderaY": 1.831,
+  "caderaYProcedural": 0.91,
+  "largoPatas": {},
+  "largoPatasProcedural": {}
+ },
+ "pesos": "precalculados en el GLB (JOINTS_0/WEIGHTS_0, índices en el orden de huesos)"
+}

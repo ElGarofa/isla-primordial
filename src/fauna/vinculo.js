@@ -115,6 +115,10 @@ export function sentirRel(c, dtS, now, playing) {
 }
 
 /** Cuidados (cada fotograma): el tiempo de doma solo corre mientras el animal está bien atendido y cerca. */
+// Biomas equivalentes para el cuidado de un animal (el catálogo solo nombra los de la isla original): terreno abierto ≈ pradera, arbolado húmedo ≈ selva.
+const AFIN = { bosque: ['pradera', 'selva'], pantano: ['selva', 'pradera'], desierto: ['pradera'], taiga: ['pradera'], montana: ['pradera'], volcan: [] };
+export const biomaDeCuidado = (biomas, b) => biomas.includes(b) || (AFIN[b] ?? []).some((x) => biomas.includes(x));
+
 export function tickRel(c, dt) {
   const r = c.rel;
   if (!r) return;
@@ -124,7 +128,7 @@ export function tickRel(c, dt) {
   c.vinculo = nivelDe(c); // el aviso de vigía al jugador (habilidades.js) solo lo da quien ya es de confianza (≥ 4)
   if (!r.manejo || r.dom || d.max < 5 || !d.cuidado) return;
   const bien = c.hambre < 0.75 && c.hp / c.hpMax > 0.5 && (CALMA.has(c.state) || c.state === 'ride') && r.estres < 0.6
-    && d.cuidado.biomas.includes(ctx.world.getBiome(c.position.x, c.position.z)) && c.distToPlayer() < 150;
+    && biomaDeCuidado(d.cuidado.biomas, ctx.world.getBiome(c.position.x, c.position.z)) && c.distToPlayer() < 150;
   const tormenta = (ctx.time.weather?.storm ?? 0) > 0.5 && !ctx.survival?.nearFire?.(c.position, 12);
   if (tormenta) r.estres = Math.min(1, r.estres + dt * 0.04);
   if (bien && !tormenta) r.cuid += dt;

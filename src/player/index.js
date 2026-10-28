@@ -241,9 +241,10 @@ export async function create(ctx) {
         ctx.events.emit('player:footstep', { surface: player.inWater ? 'agua' : world.getSurface(p.x, p.z), speed: hMag, position: p });
       }
     }
-    // límites del mundo: pared invisible lejos en el mar
-    const rr = Math.hypot(p.x, p.z), lim = world.size * 0.78;
-    if (rr > lim) { p.x *= lim / rr; p.z *= lim / rr; }
+    // límites del mundo: pared invisible (cuadrada) lejos de la costa, en mar abierto
+    const lim = world.limite;
+    if (p.x > lim) p.x = lim; else if (p.x < -lim) p.x = -lim;
+    if (p.z > lim) p.z = lim; else if (p.z < -lim) p.z = -lim;
   }
   const pitchForSwim = () => -player.pitch; // mirar hacia abajo = bucear
 
@@ -279,7 +280,7 @@ export async function create(ctx) {
     }
     return best;
   }
-  const labelFlora = (t) => ({ arbol: 'Árbol', roca: 'Roca', arbusto: 'Arbusto', baya: 'Bayas', planta: 'Planta' }[t] ?? 'Recurso');
+  const labelFlora = (t) => ({ arbol: 'Árbol', roca: 'Roca', arbusto: 'Arbusto', baya: 'Bayas', planta: 'Planta', cactus: 'Cactus' }[t] ?? 'Recurso');
   const actionFor = (t) => {
     if (!t) return null;
     if (t.kind === 'agua') return 'Beber';
@@ -288,6 +289,7 @@ export async function create(ctx) {
     if (t.tipo === 'arbol') return 'Talar';
     if (t.tipo === 'roca') return 'Picar';
     if (t.tipo === 'baya') return 'Recoger';
+    if (t.tipo === 'cactus') return ctx.survival?.weaponStats?.()?.tags?.includes('corta') ? 'Sacar agua' : 'Recolectar';
     return 'Recolectar';
   };
 
@@ -310,7 +312,7 @@ export async function create(ctx) {
     if (target.kind === 'agua') { ctx.survival?.drink?.(18); ctx.audio?.play?.('beber'); return; }
     if (target.kind === 'interactuable') { target.hit.onInteract?.(); return; }
     if (target.kind === 'fauna') { if (target.hit.criatura?.rel) ctx.fauna.vinculo.interactuar(target.hit.criatura); return; }
-    if (target.kind === 'flora' && (target.tipo === 'baya' || target.tipo === 'planta')) strike(true);
+    if (target.kind === 'flora' && (target.tipo === 'baya' || target.tipo === 'planta' || target.tipo === 'cactus')) strike(true);
   }
 
   const FISTS = { item: null, dano: 4, cd: 0.7, alcance: 0, penetra: 0, aturde: 0, tags: [], cal: 1, distancia: false };
@@ -329,7 +331,7 @@ export async function create(ctx) {
     const t = scanTarget();
     if (!t) { ruido(0.2); return; }
     if (t.kind === 'flora') {
-      const esBaya = t.tipo === 'baya' || t.tipo === 'planta';
+      const esBaya = t.tipo === 'baya' || t.tipo === 'planta' || t.tipo === 'cactus';
       const r = ctx.flora.damage(t.hit.id, ws.dano, ws.item, ws.tags);
       if (r?.drops) for (const d of r.drops) {
         const left = sv?.inventory?.add?.(d.item, d.cantidad) ?? d.cantidad;
@@ -452,14 +454,15 @@ export async function create(ctx) {
     if (Math.abs(cam.fov - fov) > 0.02) { cam.fov = fov; cam.updateProjectionMatrix(); }
   }
 
-  // cámara cinematográfica del menú: vuelo lento de dron alrededor de la isla
+  // cámara cinematográfica del menú: vuelo lento de dron sobre la costa de inicio (zona que se precarga al arrancar: mar al sur, selva y montes al norte)
   function menuCamera(dt) {
-    menuCam.angle += dt * 0.035;
-    const R = 560, a = menuCam.angle;
-    const x = Math.cos(a) * R, z = Math.sin(a) * R;
-    const y = Math.max(world.getHeight(x, z), 0) + 70 + Math.sin(a * 2.3) * 22;
+    menuCam.angle += dt * 0.03;
+    const sp = world.spawn, cx = sp.x, cz = sp.z - 260, R = 430, a = menuCam.angle;
+    const x = cx + Math.cos(a) * R, z = cz + Math.sin(a) * R;
+    const y = Math.max(world.getHeight(x, z), 0) + 52 + Math.sin(a * 2.3) * 14;
     menuCam.pos.set(x, y, z);
-    menuCam.look.set(Math.cos(a + 0.9) * 120, 25, Math.sin(a + 0.9) * 120);
+    const lx = cx + Math.cos(a + 1.15) * 170, lz = cz + Math.sin(a + 1.15) * 170;
+    menuCam.look.set(lx, Math.max(world.getHeight(lx, lz), 0) + 18, lz);
     ctx.camera.position.lerp(menuCam.pos, 1 - Math.exp(-dt * 2));
     ctx.camera.lookAt(menuCam.look);
     if (ctx.camera.fov !== 52) { ctx.camera.fov = 52; ctx.camera.updateProjectionMatrix(); }

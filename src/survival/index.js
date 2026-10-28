@@ -452,6 +452,7 @@ export async function create(ctx) {
   const tutorial = { step: 0 };
   survival.tutorial = tutorial;
   survival.fires = () => campfires.list.map((f) => ({ x: f.x, z: f.z, lit: f.fuel > 0 }));
+  survival.campfires = campfires; // (pruebas y capturas: colocar fogatas directamente)
 
   // ------------------------------------------------------------------ entrada
   ctx.events.on('input:action', ({ action, pressed, index }) => {

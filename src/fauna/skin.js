@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { tileableHeight } from '../world/textures.js';
 import { mulberry32 } from '../core/rng.js';
 
-const PRESETS = {
+export const PRESETS = {
   raptor: { cell: 12, round: 0.62, bump: 1.5, mottle: 0.12, wrinkle: 0.3, base: 0.86 },
   comps: { cell: 9, round: 0.6, bump: 1.4, mottle: 0.12, wrinkle: 0.25, base: 0.88 },
   tri: { cell: 28, round: 0.7, bump: 2.6, mottle: 0.2, wrinkle: 0.6, base: 0.84 },
@@ -14,6 +14,14 @@ const PRESETS = {
   ankylo: { cell: 30, round: 0.7, bump: 2.6, mottle: 0.2, wrinkle: 0.7, base: 0.82 },
   gall: { cell: 10, round: 0.55, bump: 1.2, mottle: 0.1, wrinkle: 0.25, base: 0.88 },
   ptera: { cell: 20, round: 0.5, bump: 1.4, mottle: 0.1, wrinkle: 0.5, base: 0.88 },
+  // familias generadas (docs/ESPECIES_FAMILIAS.md)
+  croco: { cell: 22, round: 0.42, bump: 3.0, mottle: 0.2, wrinkle: 0.35, base: 0.82 },
+  plumon: { cell: 7, round: 0.5, bump: 0.7, mottle: 0.1, wrinkle: 0.2, base: 0.9 },
+  liso: { cell: 6, round: 0.5, bump: 0.55, mottle: 0.08, wrinkle: 0.35, base: 0.9 },
+  pez: { cell: 8, round: 0.82, bump: 1.2, mottle: 0.1, wrinkle: 0.15, base: 0.9 },
+  pelo: { cell: 5, round: 0.4, bump: 0.6, mottle: 0.12, wrinkle: 0.2, base: 0.88 },
+  acorazado: { cell: 24, round: 0.55, bump: 3.2, mottle: 0.22, wrinkle: 0.5, base: 0.8 },
+  aspero: { cell: 36, round: 0.75, bump: 2.8, mottle: 0.14, wrinkle: 1.0, base: 0.84 },
 };
 
 const cache = new Map();

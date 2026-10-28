@@ -240,7 +240,7 @@ export async function create(ctx) {
     shared.fogA[3] = s.fogBase;
     shared.fogB[0] = ctx.time.sunDir.x; shared.fogB[1] = ctx.time.sunDir.y; shared.fogB[2] = ctx.time.sunDir.z;
     shared.fogB[3] = s.fogLobe * (1 - u);
-    shared.fogC[0] = 2300; shared.fogC[1] = u > 0.5 ? 0 : 3300;
+    shared.fogC[0] = ctx.camera.far * 0.72; shared.fogC[1] = u > 0.5 ? 0 : ctx.camera.far * 0.96;
     shared.fogSun[0] = lerp(s.fogSunColor.r, wc.r, u);
     shared.fogSun[1] = lerp(s.fogSunColor.g, wc.g, u);
     shared.fogSun[2] = lerp(s.fogSunColor.b, wc.b, u);

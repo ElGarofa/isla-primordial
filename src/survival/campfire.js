@@ -1,6 +1,12 @@
 // Fogatas: se colocan con el objeto 'fogata'; dan calor y luz, cocinan carne y se apagan si no se les echa leña.
+// Malla: el modelo 3D generado (public/models/objetos/fogata.glb: piedras, leños y brasas) cuando está disponible; si no, la procedural.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mulberry32 } from '../core/rng.js';
+import { OBJETOS } from '../player/objetos-disponibles.js';
+
+const DIAMETRO_GLB = 1.25; // m (el anillo de piedras de la procedural mide ≈ 1,25 m)
 
 const MAX_FUEL = 720; // s
 const WOOD_FUEL = 150;
@@ -36,17 +42,43 @@ function buildMesh() {
   return g;
 }
 
+/** Modelo GLB normalizado: apoyado en y = 0, centrado y con DIAMETRO_GLB de ancho. */
+function prepararGLB(escena) {
+  escena.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(escena), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  const k = DIAMETRO_GLB / Math.max(size.x, size.z, 1e-6);
+  const g = new THREE.Group(), inner = escena;
+  inner.position.set(-c.x * k, -box.min.y * k, -c.z * k); inner.scale.setScalar(k);
+  const mats = [];
+  inner.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material?.isMeshStandardMaterial) { o.material.metalness = 0; mats.push(o.material); } } });
+  g.add(inner); g.userData.mats = mats;
+  return g;
+}
+
 export function createCampfires(ctx, inventory) {
   const list = [];
   const group = new THREE.Group(); group.name = 'fogatas'; ctx.scene.add(group);
   let cooking = null; // { fire, t }
+  let modelo = null; // GLB preparado (se clona por fogata; geometría y materiales compartidos)
+  const usarGLB = OBJETOS.includes('fogata') && !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('objetos') === '0');
+  const listo = usarGLB ? new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(`${(typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || './'}models/objetos/fogata.glb`).then((gl) => {
+    modelo = prepararGLB(gl.scene);
+    for (const m of modelo.userData.mats) ctx.lighting?.setupMaterial?.(m);
+    for (const f of list) { group.remove(f.mesh); f.mesh = crearMalla(f.x, f.y, f.z); } // las colocadas antes de cargar cambian de malla
+  }).catch((e) => console.warn('[fogata] modelo 3D no disponible, se usa la malla procedural —', e?.message ?? e)) : Promise.resolve();
+
+  function crearMalla(x, y, z) {
+    let mesh;
+    if (modelo) { mesh = modelo.clone(true); mesh.rotation.y = ((x * 12.9898 + z * 78.233) % 6.283); }
+    else { mesh = buildMesh(); for (const m of mesh.userData.mats) ctx.lighting?.setupMaterial?.(m); }
+    mesh.position.set(x, y, z);
+    group.add(mesh);
+    return mesh;
+  }
 
   function add(x, z, fuel = 360) {
     const y = ctx.world.getHeight(x, z);
-    const mesh = buildMesh();
-    mesh.position.set(x, y, z);
-    for (const m of mesh.userData.mats) ctx.lighting?.setupMaterial?.(m);
-    group.add(mesh);
+    const mesh = crearMalla(x, y, z);
     const f = { x, z, y, mesh, fuel, fire: null, off: null };
     f.pos = new THREE.Vector3(x, y + 0.25, z);
     f.unregister = ctx.player.registerInteractable({
@@ -101,6 +133,8 @@ export function createCampfires(ctx, inventory) {
 
   return {
     list,
+    listo,
+    get conModelo() { return !!modelo; },
     placeFromPlayer,
     nearLit(pos, r = 5) { for (const f of list) if (f.fuel > 0 && Math.hypot(f.x - pos.x, f.z - pos.z) < r) return true; return false; },
     /** Calor 0..1 en una posición (para la temperatura). */

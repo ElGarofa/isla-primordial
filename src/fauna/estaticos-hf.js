@@ -1,0 +1,3 @@
+// Especies con piel texturizada generada (Higgsfield/Tripo) y esqueleto ajustado por tools/autorig.mjs: public/models/fauna/hf/<id>.glb + <id>.rig.json.
+// Lo reescribe tools/autorig.mjs. ?hf=0 las desactiva (vuelven a su malla procedural o a su GLB animado).
+export const ESTATICOS_HF = ["allosaurus","ankylosaurus","apatosaurus","braquiosaurio","ceratosaurus","compsognatus","corythosaurus","dilophosaurus","dimorphodon","diplodocus","edmontosaurus","gallimimus","giganotosaurus","ichthyosaurus","iguanodon","kentrosaurus","maiasaura","mosasaurus","oviraptor","pachycephalosaurus","parasaurolophus","plesiosaurus","protoceratops","raptor","sarcosuchus","spinosaurus","stegosaurus","styracosaurus","therizinosaurus","triceratops","tyrannosaurus","velociraptor"];

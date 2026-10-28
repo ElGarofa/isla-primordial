@@ -1,0 +1,352 @@
+{
+ "version": 2,
+ "id": "triceratops",
+ "plantilla": "cuadrupedo",
+ "unidades": "m",
+ "fuente": "triceratops.glb (Higgsfield/Tripo)",
+ "orientacion": {
+  "giroGrados": 1.6,
+  "escala": 8.97237,
+  "ejeOriginal": -88.4
+ },
+ "triangulos": {
+  "original": 37998,
+  "juego": 13999
+ },
+ "albedoMedio": 0.0979,
+ "huesos": [
+  {
+   "nombre": "hips",
+   "padre": null,
+   "pos": [
+    0.2375,
+    2.5436,
+    -0.7128
+   ]
+  },
+  {
+   "nombre": "spine1",
+   "padre": "hips",
+   "pos": [
+    -0.0261,
+    2.5158,
+    0.3456
+   ]
+  },
+  {
+   "nombre": "spine2",
+   "padre": "spine1",
+   "pos": [
+    0.3111,
+    2.2314,
+    1.576
+   ]
+  },
+  {
+   "nombre": "neck1",
+   "padre": "spine2",
+   "pos": [
+    0.2619,
+    2.9972,
+    2.5362
+   ]
+  },
+  {
+   "nombre": "head",
+   "padre": "neck1",
+   "pos": [
+    -0.1682,
+    2.6516,
+    3.0913
+   ]
+  },
+  {
+   "nombre": "jaw",
+   "padre": "head",
+   "pos": [
+    0.119,
+    2.1438,
+    3.3818
+   ]
+  },
+  {
+   "nombre": "tail1",
+   "padre": "hips",
+   "pos": [
+    -0.0496,
+    2.3363,
+    -1.539
+   ]
+  },
+  {
+   "nombre": "tail2",
+   "padre": "tail1",
+   "pos": [
+    -0.0142,
+    2.501,
+    -2.4935
+   ]
+  },
+  {
+   "nombre": "tail3",
+   "padre": "tail2",
+   "pos": [
+    0.1142,
+    2.4421,
+    -3.3298
+   ]
+  },
+  {
+   "nombre": "tail4",
+   "padre": "tail3",
+   "pos": [
+    0.3546,
+    2.4556,
+    -4.0631
+   ]
+  },
+  {
+   "nombre": "thighL",
+   "padre": "hips",
+   "pos": [
+    0.8269,
+    2.491,
+    -0.8175
+   ]
+  },
+  {
+   "nombre": "shinL",
+   "padre": "thighL",
+   "pos": [
+    0.8069,
+    1.4908,
+    -0.4208
+   ]
+  },
+  {
+   "nombre": "footL",
+   "padre": "shinL",
+   "pos": [
+    0.7957,
+    0.74,
+    -0.8776
+   ]
+  },
+  {
+   "nombre": "fupL",
+   "padre": "spine2",
+   "pos": [
+    0.743,
+    2.0457,
+    1.7127
+   ]
+  },
+  {
+   "nombre": "flowL",
+   "padre": "fupL",
+   "pos": [
+    0.7614,
+    1.2922,
+    1.3171
+   ]
+  },
+  {
+   "nombre": "ffootL",
+   "padre": "flowL",
+   "pos": [
+    0.8522,
+    0.6278,
+    1.4086
+   ]
+  },
+  {
+   "nombre": "thighR",
+   "padre": "hips",
+   "pos": [
+    -0.8173,
+    2.491,
+    -0.8175
+   ]
+  },
+  {
+   "nombre": "shinR",
+   "padre": "thighR",
+   "pos": [
+    -0.7275,
+    1.5594,
+    -0.1225
+   ]
+  },
+  {
+   "nombre": "footR",
+   "padre": "shinR",
+   "pos": [
+    -0.8274,
+    0.7252,
+    -0.539
+   ]
+  },
+  {
+   "nombre": "fupR",
+   "padre": "spine2",
+   "pos": [
+    -0.4717,
+    2.0457,
+    1.7127
+   ]
+  },
+  {
+   "nombre": "flowR",
+   "padre": "fupR",
+   "pos": [
+    -0.6307,
+    1.21,
+    1.8067
+   ]
+  },
+  {
+   "nombre": "ffootR",
+   "padre": "flowR",
+   "pos": [
+    -0.6051,
+    0.6628,
+    2.0898
+   ]
+  }
+ ],
+ "patas": [
+  {
+   "name": "FL",
+   "thigh": "fupL",
+   "shin": "flowL",
+   "foot": "ffootL",
+   "phase": 0,
+   "bendFwd": false,
+   "quad": "front",
+   "toe": [
+    0.6661,
+    0.0253,
+    2.1009
+   ],
+   "toeMalla": [
+    0.8149,
+    0.0306,
+    1.7046
+   ]
+  },
+  {
+   "name": "BR",
+   "thigh": "thighR",
+   "shin": "shinR",
+   "foot": "footR",
+   "phase": 0,
+   "bendFwd": true,
+   "toe": [
+    -0.8669,
+    0.0301,
+    -0.4913
+   ],
+   "toeMalla": [
+    -0.8619,
+    0.0268,
+    -0.2948
+   ]
+  },
+  {
+   "name": "FR",
+   "thigh": "fupR",
+   "shin": "flowR",
+   "foot": "ffootR",
+   "phase": 0.5,
+   "bendFwd": false,
+   "quad": "front",
+   "toe": [
+    -0.6661,
+    0.0253,
+    2.1009
+   ],
+   "toeMalla": [
+    -0.5173,
+    0.0199,
+    2.4971
+   ]
+  },
+  {
+   "name": "BL",
+   "thigh": "thighL",
+   "shin": "shinL",
+   "foot": "footL",
+   "phase": 0.5,
+   "bendFwd": true,
+   "toe": [
+    0.8669,
+    0.0301,
+    -0.4913
+   ],
+   "toeMalla": [
+    0.872,
+    0.0334,
+    -0.6878
+   ]
+  }
+ ],
+ "puntas": {
+  "head": [
+   -0.4316,
+   3.1018,
+   4.3078
+  ],
+  "tail4": [
+   0.5098,
+   2.4731,
+   -4.483
+  ]
+ },
+ "radios": {
+  "fupL": 1.2671,
+  "thighR": 1.4405,
+  "fupR": 1.6988,
+  "thighL": 1.2361
+ },
+ "medidas": {
+  "plantilla": "cuadrupedo",
+  "apoyos": {
+   "procedural": 4,
+   "generada": 4
+  },
+  "marcasZ": [
+   [
+    -4.402,
+    -4.483
+   ],
+   [
+    3.519,
+    4.482
+   ],
+   [
+    -0.69,
+    -0.598
+   ],
+   [
+    1.17,
+    1.945
+   ]
+  ],
+  "factorGrosor": 1.391,
+  "caderaY": 2.544,
+  "caderaYProcedural": 1.75,
+  "largoPatas": {
+   "FL": 1.528,
+   "BR": 2.103,
+   "FR": 1.472,
+   "BL": 1.955
+  },
+  "largoPatasProcedural": {
+   "FL": 1.241,
+   "BR": 1.369,
+   "FR": 1.241,
+   "BL": 1.369
+  }
+ },
+ "pesos": "precalculados en el GLB (JOINTS_0/WEIGHTS_0, índices en el orden de huesos)"
+}

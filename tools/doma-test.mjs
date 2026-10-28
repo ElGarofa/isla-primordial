@@ -589,13 +589,27 @@ await R('montura: gallimimus con montura ligera y bolsa (la más pequeña); el a
   T.dar('bolsa_carga'); const bolsa = V.equipar(g, S.slots.findIndex((x) => x?.item === 'bolsa_carga')).ok;
   T.jug(g.position.x + 2, g.position.z, 0); g.setState('idle');
   const m = M.montar(g).ok; const nivel = V.nivelDe(g); T.avanza(1); const a = M.ancla(g);
+  // lomo real bajo la silla: el vértice más alto de la malla animada a menos de 35 cm (en planta) del ancla.
+  // (La altura absoluta depende del modelo: la piel Higgsfield del galimimo es más alta que la procedural.)
+  let lomo = -1e9, minD = 1e9;
+  const mesh = g.mesh, ax = a.x, ay = a.y, az = a.z;
+  if (mesh?.geometry) {
+    (g.group ?? mesh).updateMatrixWorld(true); mesh.skeleton?.update?.(); // sin render no se actualizan solas
+    const P = mesh.geometry.attributes.position, v = new g.position.constructor();
+    for (let i = 0; i < P.count; i++) {
+      mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld);
+      const d = Math.hypot(v.x - ax, v.z - az); if (d < minD) minD = d;
+      if (d < 0.35 && v.y > lomo) lomo = v.y;
+    }
+  }
   M.desmontar();
-  return { soloArnes, eq, bolsa, m, nivel, ancla: a.y - g.position.y };
+  return { soloArnes, eq, bolsa, m, nivel, ancla: +(ay - g.position.y).toFixed(3), lomo: +(lomo - g.position.y).toFixed(3), minD: +minD.toFixed(3), malla: !!mesh?.geometry };
 }, (r) => {
   if (r.error) return r.error;
   if (!/montura adecuada/.test(r.soloArnes)) return 'el arnés solo permitió montar: ' + r.soloArnes;
   if (!r.eq || !r.bolsa || !r.m || r.nivel !== 6) return JSON.stringify(r);
-  if (r.ancla < 1.8 || r.ancla > 2.8) return 'altura de silla rara: ' + r.ancla;
+  if (!(r.lomo > 0.5)) return 'no se encontró el lomo bajo la silla: ' + JSON.stringify(r);
+  if (r.ancla < r.lomo - 0.15 || r.ancla > r.lomo + 0.6) return 'la silla no queda apoyada sobre el lomo: ' + JSON.stringify(r);
   return true;
 });
 

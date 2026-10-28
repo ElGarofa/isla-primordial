@@ -131,7 +131,7 @@ export async function create(ctx) {
     const p = ctx.camera.position;
     const biome = ctx.world.getBiome?.(p.x, p.z);
     const night = ctx.time.nightFactor;
-    const eligible = biome === 'selva' || biome === 'pradera' || biome === 'pantano';
+    const eligible = biome === 'selva' || biome === 'pradera' || biome === 'pantano' || biome === 'bosque';
     if (!eligible || W.rain > 0.3) return;
     flyState.acc += dt * (night > 0.5 ? 14 : 5);
     while (flyState.acc >= 1 && fly.n < (night > 0.5 ? 150 : 50)) {

@@ -48,7 +48,33 @@ async function run(ctx, items, shotCam, warm = 20, big = 0) {
   return { out, ...shotCam(p, out) };
 }
 
+import { ESTATICOS_HF } from './estaticos-hf.js';
+import { SPECIES } from './species.js';
+
+/** Pieles generadas (Higgsfield + autorig): de lado caminando, de frente y de tres cuartos, encuadre según el tamaño de la especie. */
+function presetsHF() {
+  const out = {};
+  for (const id of ESTATICOS_HF) {
+    const sp = SPECIES[id]; if (!sp) continue;
+    const L = sp.cat?.tamano ?? 4, vol = sp.cat?.tipoAnimal === 'pterosaurio', agua = !!sp.nada;
+    const alto = () => Math.max(0.6, (sp.hips || L * 0.2));
+    out[`fauna_hf_${id}`] = async (ctx) => ({ hour: 14.5, ...(await run(ctx, [{ e: id, yaw: Math.PI / 2, speed: vol || agua ? 0 : Math.min(2.2, sp.vel?.walk ?? 1.5) }], (p) => side(p, L * 1.05 + 2.5, Math.max(1.2, alto() * 0.85), 0, alto() * 0.8), 40, Math.max(18, L * 1.6))) });
+    out[`fauna_hf_${id}_patas`] = async (ctx) => ({ hour: 13.5, ...(await run(ctx, [{ e: id, yaw: Math.PI / 2, speed: vol || agua ? 0 : Math.min(2.2, sp.vel?.walk ?? 1.5) }], (p) => side(p, Math.max(1.6, L * 0.42), Math.max(0.5, alto() * 0.55), 0, alto() * 0.55), 33, Math.max(18, L * 1.6))) });
+    out[`fauna_hf_${id}_tres`] = async (ctx) => ({ hour: 16, ...(await run(ctx, [{ e: id, yaw: 0.6 }], (p) => ({ camera: { agl: true, pos: [p.x + L * 0.55 + 1.5, Math.max(1.4, alto() * 1.1), p.z + L * 0.75 + 2], look: [p.x, alto() * 0.75, p.z] } }), 30, Math.max(18, L * 1.6))) });
+    if (vol || agua) continue;
+    // capas: pastando (cabeza al suelo) y cadáver tendido de costado sobre el terreno
+    out[`fauna_hf_${id}_pasta`] = async (ctx) => ({ hour: 10.5, ...(await run(ctx, [{ e: id, yaw: Math.PI / 2, state: 'graze' }], (p) => side(p, L * 0.9 + 2.5, Math.max(1.0, alto() * 0.7), 0, alto() * 0.5), 90, Math.max(18, L * 1.6))) });
+    out[`fauna_hf_${id}_muerto`] = async (ctx) => {
+      const r = await run(ctx, [{ e: id, yaw: Math.PI / 2 }], (p) => ({ camera: { agl: true, pos: [p.x + L * 0.35, Math.max(1.3, alto() * 0.9), p.z - L * 0.9 - 2.5], look: [p.x, alto() * 0.3, p.z] } }), 10, Math.max(18, L * 1.6));
+      const c = r.out[0]; c.die(); for (let i = 0; i < 75; i++) c.update(1 / 30, true);
+      return { hour: 15.5, ...r };
+    };
+  }
+  return out;
+}
+
 export const shots = {
+  ...presetsHF(),
   fauna_raptor_lado: async (ctx) => ({ hour: 14, setup: async () => {}, ...(await run(ctx, [{ e: 'raptor', yaw: Math.PI / 2, speed: SPD.raptor[0] }], (p) => side(p, 5.2, 1.2, 0, 0.9))) }),
   fauna_raptor_carrera: async (ctx) => ({ hour: 15.5, ...(await run(ctx, [{ e: 'raptor', yaw: Math.PI / 2, speed: SPD.raptor[1] }], (p) => side(p, 5.4, 1.3, 0, 0.9), 40)) }),
   fauna_raptor_rugido: async (ctx) => ({ hour: 16.5, ...(await run(ctx, [{ e: 'raptor', yaw: 2.3, roar: true }], (p) => ({ camera: { agl: true, pos: [p.x + 0.6, 1.75, p.z - 4.2], look: [p.x + 0.6, 1.5, p.z] } }))) }),
@@ -68,6 +94,20 @@ export const shots = {
     c.update = function (dt) { this.t += dt; this.flight.flapPh += dt * 7.5; this.applyFlight(dt); this.group.rotation.set(0, this.yaw, 0); this.group.position.copy(this.position); };
     return { hour: 16.5, camera: r.camera };
   },
+  // ---- pterosaurios en vuelo (cielo visto desde el suelo)
+  fauna_pterosaurios_cielo: async (ctx) => {
+    const r = await run(ctx, [{ e: 'tapejara' }, { e: 'tupandactylus' }, { e: 'anhanguera' }, { e: 'quetzalcoatlus' }, { e: 'rhamphorhynchus' }], (p) => ({ camera: { agl: true, pos: [p.x, 1.7, p.z], look: [p.x + 40, 26, p.z] } }), 5);
+    const px = r.camera.pos[0], pz = r.camera.pos[2], w = ctx.world;
+    const pos = [[16, 8, -6, 0.5, 1], [24, 14, 9, 2.5, 1], [34, 20, -14, 1.2, 0], [70, 34, 12, 2.0, 0], [11, 5, 5, 0.2, 1]];
+    r.out.forEach((c, i) => {
+      const [dx, dy, dz, yaw, flap] = pos[i];
+      c.frozen = true; c.flight.flap = flap; c.flight.flapPh = 0.7 * i; c.roll = i % 2 ? 0.2 : -0.2;
+      c.position.set(px + dx, Math.max(0, w.getHeight(px + dx, pz + dz)) + dy, pz + dz); c.yaw = yaw;
+      c.update = function (dt) { this.t += dt; this.flight.flapPh += dt * this.flight.aleteo; this.applyFlight(dt); this.group.rotation.set(0, this.yaw, 0); this.group.position.copy(this.position); };
+      for (let k = 0; k < 20; k++) c.update(1 / 30);
+    });
+    return { hour: 15.5, camera: r.camera };
+  },
   // ---- Etapa 1: especies nuevas
   fauna_rex_lado: async (ctx) => ({ hour: 15, ...(await run(ctx, [{ e: 'tyrannosaurus', yaw: Math.PI / 2, speed: 2.0 }], (p) => side(p, 13.5, 2.4, 0, 2.5), 40, 40)) }),
   fauna_rex_frente: async (ctx) => ({ hour: 16.3, ...(await run(ctx, [{ e: 'tyrannosaurus', yaw: 0.25 }], (p) => ({ camera: { agl: true, pos: [p.x + 2.5, 1.9, p.z + 11], look: [p.x, 3.0, p.z] } }), 30, 40)) }),
@@ -77,6 +117,21 @@ export const shots = {
     return { hour: 17.4, ...r };
   },
   fauna_rex_cabeza: async (ctx) => ({ hour: 14, ...(await run(ctx, [{ e: 'tyrannosaurus', yaw: 1.2 }], (p) => ({ camera: { agl: true, pos: [p.x + 1.5, 4.4, p.z - 5.5], look: [p.x + 3.6, 4.0, p.z + 0.6] } }), 30, 40)) }),
+  // --- modelo estático generado (Carnotaurus) acoplado al esqueleto procedural: reposo, marcha, carrera, rugido, frente
+  fauna_carnotaurus_lado: async (ctx) => ({ hour: 14, ...(await run(ctx, [{ e: 'carnotaurus', yaw: Math.PI / 2, speed: 2.0 }], (p) => side(p, 9, 2.0, 0, 2.0), 40, 40)) }),
+  fauna_carnotaurus_carrera: async (ctx) => ({ hour: 15.5, ...(await run(ctx, [{ e: 'carnotaurus', yaw: Math.PI / 2, speed: 6.6 }], (p) => side(p, 9, 2.0, 0, 2.0), 40, 40)) }),
+  fauna_carnotaurus_frente: async (ctx) => ({ hour: 16.3, ...(await run(ctx, [{ e: 'carnotaurus', yaw: 0.25 }], (p) => ({ camera: { agl: true, pos: [p.x + 2.5, 1.9, p.z + 11], look: [p.x, 2.6, p.z] } }), 30, 40)) }),
+  fauna_carnotaurus_rugido: async (ctx) => {
+    const r = await run(ctx, [{ e: 'carnotaurus', yaw: 2.4, state: 'alert' }], (p) => ({ camera: { agl: true, pos: [p.x - 3.5, 2.4, p.z - 9], look: [p.x, 3.3, p.z] } }), 30, 40);
+    r.out[0].display = 3; r.out[0].jawAnim = 1.2; for (let i = 0; i < 12; i++) r.out[0].update(1 / 30, true);
+    return { hour: 17.4, ...r };
+  },
+  fauna_carnotaurus_cabeza: async (ctx) => {
+    const r = await run(ctx, [{ e: 'carnotaurus', yaw: Math.PI / 2, state: 'alert' }], (p) => ({ camera: { agl: true, pos: [p.x + 3.1, 3.6, p.z - 4.0], look: [p.x + 3.1, 3.4, p.z] } }), 30, 40);
+    r.out[0].display = 3; r.out[0].jawAnim = 1.2; for (let i = 0; i < 18; i++) r.out[0].update(1 / 30, true);
+    return { hour: 14, ...r };
+  },
+  fauna_carnotaurus_patas: async (ctx) => ({ hour: 14, ...(await run(ctx, [{ e: 'carnotaurus', yaw: Math.PI / 2, speed: 2.0 }], (p) => ({ camera: { agl: true, pos: [p.x, 1.2, p.z - 5.2], look: [p.x, 1.3, p.z] } }), 47, 40)) }),
   fauna_parasaurolophus_lado: async (ctx) => ({ hour: 14, ...(await run(ctx, [{ e: 'parasaurolophus', yaw: Math.PI / 2, speed: 1.6 }], (p) => side(p, 11, 2.2, 0, 2.2), 40, 30)) }),
   fauna_parasaurolophus_llamada: async (ctx) => {
     const r = await run(ctx, [{ e: 'parasaurolophus', yaw: 2.2 }], (p) => ({ camera: { agl: true, pos: [p.x - 4, 2.2, p.z - 9.5], look: [p.x, 3.0, p.z] } }), 30, 30);
@@ -84,6 +139,18 @@ export const shots = {
     return { hour: 16.8, ...r };
   },
   fauna_parasaurolophus_manada: async (ctx) => ({ hour: 9, ...(await run(ctx, [{ e: 'parasaurolophus', yaw: 1.2, speed: 1.6, tint: 0.2 }, { e: 'parasaurolophus', dx: -7, dz: 4, yaw: 1.4, speed: 1.6, tint: 0.7 }, { e: 'parasaurolophus', dx: -3, dz: -7, yaw: 1.0, speed: 1.4, tint: 0.5 }], (p) => ({ camera: { agl: true, pos: [p.x - 6, 2.2, p.z - 26], look: [p.x - 3, 2.4, p.z - 1] } }), 40, 40)) }),
+  // --- modelo GLB del Parasaurolophus (comprobación de calidad: tamaño, cabeza, marcha, pasto, frente, muerte)
+  fauna_parasaurolophus_cabeza: async (ctx) => ({ hour: 14, ...(await run(ctx, [{ e: 'parasaurolophus', yaw: Math.PI / 2 }], (p) => ({ camera: { agl: true, pos: [p.x + 2.4, 3.3, p.z - 4.2], look: [p.x + 3.6, 3.2, p.z] } }), 40, 30)) }),
+  fauna_parasaurolophus_correr: async (ctx) => ({ hour: 15.5, ...(await run(ctx, [{ e: 'parasaurolophus', yaw: Math.PI / 2, speed: 6.6 }], (p) => side(p, 11, 2.2, 0, 2.2), 40, 30)) }),
+  fauna_parasaurolophus_pasta: async (ctx) => ({ hour: 10, ...(await run(ctx, [{ e: 'parasaurolophus', yaw: Math.PI / 2, state: 'graze' }], (p) => side(p, 11, 2.2, 0, 2.2), 60, 30)) }),
+  fauna_parasaurolophus_frente: async (ctx) => ({ hour: 16, ...(await run(ctx, [{ e: 'parasaurolophus', yaw: 0.2 }], (p) => ({ camera: { agl: true, pos: [p.x + 2.5, 1.9, p.z + 11], look: [p.x, 2.6, p.z] } }), 40, 30)) }),
+  // vista del jinete: cámara en el ancla de la montura (+ altura de ojos sobre el lomo), mirando hacia delante mientras el animal trota
+  fauna_parasaurolophus_jinete: async (ctx) => ({ hour: 11, ...(await run(ctx, [{ e: 'parasaurolophus', yaw: Math.PI / 2, speed: 4.2 }], (p) => ({ camera: { agl: true, pos: [p.x - 0.3, 4.3, p.z], look: [p.x + 30, 3.4, p.z] } }), 40, 30)) }),
+  fauna_parasaurolophus_muerto: async (ctx) => {
+    const r = await run(ctx, [{ e: 'parasaurolophus', yaw: Math.PI / 2 }], (p) => side(p, 11, 2.4, 0, 1.2), 20, 30);
+    r.out[0].die(); for (let i = 0; i < 90; i++) r.out[0].update(1 / 30, true);
+    return { hour: 14, ...r };
+  },
   fauna_stegosaurus_lado: async (ctx) => ({ hour: 14.5, ...(await run(ctx, [{ e: 'stegosaurus', yaw: Math.PI / 2, speed: 1.2 }], (p) => side(p, 10.5, 1.9, 0, 1.8), 40, 30)) }),
   fauna_stegosaurus_cola: async (ctx) => {
     const r = await run(ctx, [{ e: 'stegosaurus', yaw: 0.0 }], (p) => ({ camera: { agl: true, pos: [p.x + 7.5, 2.0, p.z - 9], look: [p.x, 1.4, p.z - 2] } }), 30, 30);

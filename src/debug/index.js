@@ -8,7 +8,7 @@ import * as THREE from 'three';
 const found = import.meta.glob('../*/shots.js');
 const PRESETS = {};
 
-export async function installDebug(ctx, { step }) {
+export async function installDebug(ctx, { step, modules = [] }) {
   for (const [file, load] of Object.entries(found)) {
     try {
       Object.assign(PRESETS, (await load()).shots ?? {});
@@ -20,6 +20,8 @@ export async function installDebug(ctx, { step }) {
     ready: true,
     manual: true, // el bucle automático queda en pausa; se avanza con advance()
     ctx,
+    /** Módulos del juego ({ name, mod }): para medir el coste de cada update (tools / perfiles). */
+    modules,
     listPresets: () => Object.keys(PRESETS),
 
     async applyPreset(name) {
