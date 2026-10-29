@@ -1,0 +1,230 @@
+{
+ "version": 2,
+ "id": "dimorphodon",
+ "plantilla": "pterosaurio",
+ "unidades": "m",
+ "fuente": "dimorphodon.glb (Higgsfield/Tripo)",
+ "orientacion": {
+  "giroGrados": 0,
+  "escala": 1.29255,
+  "ejeOriginal": 0,
+  "simetria": {
+   "guinada": 16,
+   "alabeo": 0,
+   "iou": 0.491
+  }
+ },
+ "triangulos": {
+  "original": 37997,
+  "juego": 13999
+ },
+ "albedoMedio": 0.1365,
+ "huesos": [
+  {
+   "nombre": "hips",
+   "padre": null,
+   "pos": [
+    0.0205,
+    0.1547,
+    0.1567
+   ]
+  },
+  {
+   "nombre": "spine1",
+   "padre": "hips",
+   "pos": [
+    0.0179,
+    0.1692,
+    0.2542
+   ]
+  },
+  {
+   "nombre": "neck1",
+   "padre": "spine1",
+   "pos": [
+    0.0085,
+    0.1812,
+    0.357
+   ]
+  },
+  {
+   "nombre": "head",
+   "padre": "neck1",
+   "pos": [
+    0.0027,
+    0.2066,
+    0.3614
+   ]
+  },
+  {
+   "nombre": "jaw",
+   "padre": "head",
+   "pos": [
+    0.0092,
+    0.1508,
+    0.4023
+   ]
+  },
+  {
+   "nombre": "tail",
+   "padre": "hips",
+   "pos": [
+    0.0187,
+    0.1396,
+    0.0942
+   ]
+  },
+  {
+   "nombre": "tail2",
+   "padre": "tail",
+   "pos": [
+    0.0535,
+    0.2283,
+    -0.2076
+   ]
+  },
+  {
+   "nombre": "shL",
+   "padre": "spine1",
+   "pos": [
+    0.0505,
+    0.1726,
+    0.2392
+   ]
+  },
+  {
+   "nombre": "elL",
+   "padre": "shL",
+   "pos": [
+    0.1835,
+    0.1645,
+    0.1585
+   ]
+  },
+  {
+   "nombre": "wrL",
+   "padre": "elL",
+   "pos": [
+    0.3153,
+    0.141,
+    0.1067
+   ]
+  },
+  {
+   "nombre": "fgL",
+   "padre": "wrL",
+   "pos": [
+    0.5065,
+    0.132,
+    0.0434
+   ]
+  },
+  {
+   "nombre": "legUL",
+   "padre": "hips",
+   "pos": [
+    0.0361,
+    0.1431,
+    0.1391
+   ]
+  },
+  {
+   "nombre": "shR",
+   "padre": "spine1",
+   "pos": [
+    -0.0063,
+    0.1726,
+    0.2392
+   ]
+  },
+  {
+   "nombre": "elR",
+   "padre": "shR",
+   "pos": [
+    -0.1835,
+    0.1473,
+    0.177
+   ]
+  },
+  {
+   "nombre": "wrR",
+   "padre": "elR",
+   "pos": [
+    -0.3153,
+    0.1482,
+    0.1597
+   ]
+  },
+  {
+   "nombre": "fgR",
+   "padre": "wrR",
+   "pos": [
+    -0.5065,
+    0.1464,
+    0.1814
+   ]
+  },
+  {
+   "nombre": "legUR",
+   "padre": "hips",
+   "pos": [
+    -0.0234,
+    0.1431,
+    0.1391
+   ]
+  }
+ ],
+ "patas": [],
+ "puntas": {
+  "head": [
+   0.0121,
+   0.1286,
+   0.5448
+  ],
+  "tail2": [
+   0.105,
+   0.3039,
+   -0.547
+  ],
+  "fgL": [
+   0.6996,
+   0.0882,
+   -0.0982
+  ],
+  "legUL": [
+   0.0643,
+   -0.1192,
+   0.1047
+  ],
+  "fgR": [
+   -0.6995,
+   0.1074,
+   0.2032
+  ],
+  "legUR": [
+   -0.0538,
+   -0.1192,
+   0.1047
+  ]
+ },
+ "radios": {},
+ "medidas": {
+  "plantilla": "pterosaurio",
+  "marcasZ": [
+   [
+    -0.966,
+    -0.506
+   ],
+   [
+    0.568,
+    0.549
+   ]
+  ],
+  "factorGrosor": 1,
+  "caderaY": 0.155,
+  "caderaYProcedural": 0,
+  "largoPatas": {},
+  "largoPatasProcedural": {}
+ },
+ "pesos": "precalculados en el GLB (JOINTS_0/WEIGHTS_0, índices en el orden de huesos)"
+}

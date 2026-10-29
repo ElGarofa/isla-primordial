@@ -1,0 +1,94 @@
+{
+ "capas": [
+  "hierba",
+  "hojarasca",
+  "arena",
+  "roca",
+  "nieve",
+  "barro",
+  "ceniza",
+  "desierto"
+ ],
+ "meta": {
+  "hierba": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.1049,
+    0.1749,
+    0.0279
+   ],
+   "costura_antes": 1.2,
+   "costura_despues": 1.2
+  },
+  "hojarasca": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.096,
+    0.0634,
+    0.0314
+   ],
+   "costura_antes": 1.36,
+   "costura_despues": 1.31
+  },
+  "arena": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.487,
+    0.4099,
+    0.3043
+   ],
+   "costura_antes": 1.08,
+   "costura_despues": 1.08
+  },
+  "roca": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.2131,
+    0.213,
+    0.2018
+   ],
+   "costura_antes": 1.32,
+   "costura_despues": 1.29
+  },
+  "nieve": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.5334,
+    0.6321,
+    0.7596
+   ],
+   "costura_antes": 1.52,
+   "costura_despues": 1.49
+  },
+  "barro": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.0501,
+    0.0389,
+    0.0302
+   ],
+   "costura_antes": 1.12,
+   "costura_despues": 1.06
+  },
+  "ceniza": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.0655,
+    0.0504,
+    0.0445
+   ],
+   "costura_antes": 1.25,
+   "costura_despues": 1.25
+  },
+  "desierto": {
+   "lado": 1024,
+   "medio_lineal": [
+    0.3994,
+    0.1266,
+    0.0366
+   ],
+   "costura_antes": 1.3,
+   "costura_despues": 1.31
+  }
+ }
+}
